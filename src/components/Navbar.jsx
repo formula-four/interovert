@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useScroll, useTransform, useSpring, useAnimation } from 'framer-motion';
-import { Menu, X, MapPin, ChevronLeft, ChevronRight, Download, QrCode, Users, Compass, Coffee, Music, Book, Headphones, Camera } from 'lucide-react';
+import { Menu, X, MapPin, ChevronLeft, ChevronRight, Download, QrCode, Users, Compass, Coffee, Music, Book, Headphones, Camera, LayoutDashboard } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../utils/session';
 
@@ -101,6 +101,18 @@ function Navbar() {
                   Events
                 </motion.span>
               </Link>
+              {email && (
+                <Link to="/dashboard">
+                  <motion.span
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="inline-flex items-center gap-1.5 text-gray-700 hover:text-indigo-600 transition-colors"
+                  >
+                    <LayoutDashboard size={15} />
+                    Dashboard
+                  </motion.span>
+                </Link>
+              )}
               {['Features', 'Explore', 'Community', 'Blog'].map((item) => (
                 <motion.button
                   key={item}
@@ -178,6 +190,16 @@ function Navbar() {
               >
                 Events
               </Link>
+              {email && (
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-1.5 text-gray-700 hover:text-indigo-600 transition-colors"
+                >
+                  <LayoutDashboard size={15} />
+                  Dashboard
+                </Link>
+              )}
               {['Features', 'Explore', 'Community', 'Blog'].map((item) => (
                 <button
                   key={item}

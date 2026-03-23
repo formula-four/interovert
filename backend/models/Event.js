@@ -32,6 +32,8 @@ const eventSchema = new mongoose.Schema(
     expectations:   { type: String, required: true, trim: true },
     owner_id:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     ownerName:      { type: String, required: true, trim: true },
+    // Ticketing — 0 means free
+    ticketPrice:    { type: Number, default: 0, min: 0 },
     // Recurring events
     recurrence:     { type: recurrenceSchema, default: () => ({}) },
   },

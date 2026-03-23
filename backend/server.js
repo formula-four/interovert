@@ -15,7 +15,8 @@ import addressRoutes from './routes/addresses.js';
 import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
 import { getUserRoom, setIO } from './services/socketService.js';
-import communityRoutes from './routes/community.js';
+import communityRoutes   from './routes/community.js';
+import dashboardRoutes  from './routes/dashboard.js';
 import { getPgPool, hasPostgresConfig } from './config/pg.js';
 import { registerCommunitySocketHandlers } from './services/communitySocket.js';
 import { ensureIndex as ensureElasticIndex } from './services/elasticService.js';
@@ -128,7 +129,8 @@ app.use('/api/events', eventRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
-app.use('/api/community', communityRoutes);
+app.use('/api/community',  communityRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // AI chat: Dialogflow (if configured) -> Gemini -> OpenAI
 app.post('/api/chat', async (req, res) => {

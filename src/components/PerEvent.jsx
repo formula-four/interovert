@@ -21,6 +21,9 @@ import {
   Search,
   Phone,
   CheckCircle2,
+  Ticket,
+  IndianRupee,
+  CreditCard,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { getAuthToken, getCurrentUser } from '../utils/session'
@@ -469,6 +472,66 @@ export default function PerEvent() {
       return
     }
 
+    const isPaid = (event?.ticketPrice ?? 0) > 0
+
+    // ── Paid event → Razorpay checkout ─────────────────────────────────────
+    if (isPaid) {
+      setIsLoading(true)
+      try {
+        const { data: order } = await apiClient.post(`/api/events/${id}/payment/create-order`, {})
+
+        const options = {
+          key:         order.keyId,
+          amount:      order.amount,
+          currency:    order.currency,
+          name:        'Find My Buddy',
+          description: order.eventName,
+          order_id:    order.orderId,
+          prefill: {
+            name:    order.userName,
+            email:   order.userEmail,
+            contact: order.userPhone,
+          },
+          theme: { color: '#6366f1' },
+          handler: async (response) => {
+            try {
+              await apiClient.post(`/api/events/${id}/payment/verify`, {
+                razorpay_order_id:   response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature:  response.razorpay_signature,
+              })
+              toast.success('Payment successful! You\'re booked 🎉')
+              setIsAttending(true)
+              const { data: ev } = await apiClient.get(`/api/events/${id}`)
+              setEvent(ev)
+              setFavoriteCount(ev.favoriteCount || 0)
+              setTimeout(() => refreshChatPreview(), 400)
+            } catch (err) {
+              toast.error(err.response?.data?.message || 'Payment verification failed')
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              toast('Payment cancelled', { icon: 'ℹ️' })
+            },
+          },
+        }
+
+        if (!window.Razorpay) {
+          toast.error('Razorpay SDK not loaded. Please refresh the page.')
+          return
+        }
+        const rzp = new window.Razorpay(options)
+        rzp.open()
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Could not initiate payment')
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
+    // ── Free event → direct join ────────────────────────────────────────────
     setIsLoading(true)
     try {
       await apiClient.post(`/api/events/${id}/join`, {})
@@ -835,16 +898,39 @@ export default function PerEvent() {
                 className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/40"
               >
                 <div className="flex flex-col gap-3">
+                  {/* Ticket price display */}
+                  {(event?.ticketPrice ?? 0) > 0 ? (
+                    <div className="flex items-center justify-between rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                      <div className="flex items-center gap-2 text-amber-200">
+                        <Ticket className="h-4 w-4" />
+                        <span className="text-sm font-medium">Ticket price</span>
+                      </div>
+                      <span className="flex items-center gap-0.5 text-lg font-bold text-amber-300">
+                        <IndianRupee className="h-4 w-4" />
+                        {event.ticketPrice}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Free event
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleJoin}
-                    disabled={isLoading || isOwner || isFull}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/30 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={isLoading || isOwner || isFull || isAttending}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                      (event?.ticketPrice ?? 0) > 0 && !isAttending && !isOwner
+                        ? 'bg-amber-600 shadow-amber-900/30 hover:bg-amber-500'
+                        : 'bg-indigo-600 shadow-indigo-900/30 hover:bg-indigo-500'
+                    }`}
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        Joining…
+                        {(event?.ticketPrice ?? 0) > 0 ? 'Initiating payment…' : 'Joining…'}
                       </>
                     ) : isOwner ? (
                       <>
@@ -852,9 +938,17 @@ export default function PerEvent() {
                         You&apos;re the host
                       </>
                     ) : isAttending ? (
-                      "You're in"
+                      <>
+                        <CheckCircle2 className="h-4 w-4" aria-hidden />
+                        {(event?.ticketPrice ?? 0) > 0 ? 'Booking confirmed' : "You're in"}
+                      </>
                     ) : isFull ? (
                       'Event full'
+                    ) : (event?.ticketPrice ?? 0) > 0 ? (
+                      <>
+                        <CreditCard className="h-4 w-4" aria-hidden />
+                        Book &amp; Pay ₹{event.ticketPrice}
+                      </>
                     ) : (
                       'Join event'
                     )}

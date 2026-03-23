@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, MapPin, Users, ArrowUpRight, Repeat2 } from 'lucide-react';
+import { Calendar, MapPin, Users, ArrowUpRight, Repeat2, Ticket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getDisplayEventPhotoUrl } from '../../../utils/eventImage';
 
@@ -47,10 +47,22 @@ export default function EventCard({ event, index = 0 }) {
               </span>
             )}
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-sm">
-            <Users className="h-3.5 w-3.5 opacity-90" />
-            {event.participantCount ?? 0}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-sm">
+              <Users className="h-3.5 w-3.5 opacity-90" />
+              {event.participantCount ?? 0}
+            </span>
+            {(event.ticketPrice ?? 0) > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-sm">
+                <Ticket className="h-3 w-3 opacity-90" />
+                ₹{event.ticketPrice}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-sm">
+                Free
+              </span>
+            )}
+          </div>
         </div>
       </Link>
 

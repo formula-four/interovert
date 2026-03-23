@@ -12,6 +12,8 @@ import {
   AlignLeft,
   PartyPopper,
   Repeat2,
+  Ticket,
+  IndianRupee,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import apiClient from '../../../services/apiClient';
@@ -62,6 +64,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
     category: '',
     activities: '',
     maxAttendees: '',
+    ticketPrice: '',
     aboutYou: '',
     expectations: '',
   });
@@ -123,7 +126,8 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
       await apiClient.post('/api/events', {
         ...eventData,
         ...addressPayload,
-        category: eventData.category === 'Other' ? otherCategory : eventData.category,
+        category:     eventData.category === 'Other' ? otherCategory : eventData.category,
+        ticketPrice:  eventData.ticketPrice ? Number(eventData.ticketPrice) : 0,
         recurrenceEnabled,
         recurrenceFrequency,
         recurrenceEndAfter: recurrenceEndAfter ? Number(recurrenceEndAfter) : null,
@@ -677,6 +681,31 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                         />
                       </div>
                     </div>
+                    {/* Ticket price */}
+                    <div>
+                      <label className={labelBase} htmlFor="ce-price">
+                        Ticket price (₹)
+                      </label>
+                      <div className="relative">
+                        <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-400/80" />
+                        <input
+                          id="ce-price"
+                          type="number"
+                          min={0}
+                          step="1"
+                          placeholder="0 = Free event"
+                          value={eventData.ticketPrice}
+                          onChange={(e) =>
+                            setEventData((prev) => ({ ...prev, ticketPrice: e.target.value }))
+                          }
+                          className={`${inputBase} pl-10`}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        Leave blank or set to 0 for a free event. Razorpay payment is collected on booking.
+                      </p>
+                    </div>
+
                     <div>
                       <label className={labelBase} htmlFor="ce-about">
                         Something fun about you

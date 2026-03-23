@@ -9,6 +9,15 @@ const eventParticipantSchema = new mongoose.Schema(
     whatsappNumber: { type: String, trim: true },
     profileId: { type: String, required: true, trim: true },
     joinedAt: { type: Date, default: Date.now },
+    // Payment
+    paymentStatus: {
+      type: String,
+      enum: ['free', 'pending', 'paid', 'failed'],
+      default: 'free',
+    },
+    paymentId:  { type: String, default: null }, // Razorpay payment_id
+    orderId:    { type: String, default: null }, // Razorpay order_id
+    amountPaid: { type: Number, default: 0 },   // in INR
   },
   { timestamps: true }
 );

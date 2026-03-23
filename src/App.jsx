@@ -15,6 +15,7 @@ import Profile from './components/Profile';
 import Chat from './components/Chat';
 import ChatBot from './components/Chatbot';
 import ProtectedRoute from './components/ProtectedRoute';
+import Dashboard from './components/Dashboard';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -44,6 +45,14 @@ function App() {
               }
             />
           <Route path="/chatbot" element={<ChatBot />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
 
             
             </Route>

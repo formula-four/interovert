@@ -23,6 +23,8 @@ import {
   toggleFavorite,
   updateEvent,
   getRecommendedEvents,
+  createPaymentOrder,
+  verifyPayment,
 } from '../controllers/events.controller.js';
 
 const router = Router();
@@ -39,6 +41,8 @@ router.post('/', requireAuth, validateCreateEvent, asyncHandler(createEvent));
 router.put('/:eventId', requireAuth, validateEventIdParam, asyncHandler(updateEvent));
 router.delete('/:eventId', requireAuth, validateEventIdParam, asyncHandler(deleteEvent));
 router.post('/:eventId/join', requireAuth, validateEventIdParam, asyncHandler(joinEvent));
+router.post('/:eventId/payment/create-order', requireAuth, validateEventIdParam, asyncHandler(createPaymentOrder));
+router.post('/:eventId/payment/verify',       requireAuth, validateEventIdParam, asyncHandler(verifyPayment));
 router.post('/:eventId/favorite', requireAuth, validateEventIdParam, asyncHandler(toggleFavorite));
 router.post('/:eventId/rate', requireAuth, validateEventIdParam, asyncHandler(submitEventRating));
 router.get('/:eventId/participants', requireAuth, validateEventIdParam, asyncHandler(getParticipants));

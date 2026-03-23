@@ -28,6 +28,11 @@ import {
   isRecommendationConfigured,
 } from '../services/recommendationService.js';
 import { generateSeriesId } from '../services/recurringService.js';
+import {
+  isRazorpayConfigured,
+  createOrder as razorpayCreateOrder,
+  verifySignature as razorpayVerifySignature,
+} from '../services/razorpayService.js';
 
 function isOwner(event, userId) {
   return String(event.owner_id) === String(userId);
@@ -244,6 +249,7 @@ export async function createEvent(req, res) {
     category: payload.category,
     activities: payload.activities,
     maxAttendees: Number(payload.maxAttendees),
+    ticketPrice:  payload.ticketPrice ? Number(payload.ticketPrice) : 0,
     aboutYou: payload.aboutYou,
     expectations: payload.expectations,
     owner_id: req.user._id,
@@ -353,6 +359,15 @@ export async function joinEvent(req, res) {
     });
   }
 
+  // Paid events must go through the payment flow
+  if ((event.ticketPrice || 0) > 0) {
+    return res.status(400).json({
+      message: 'This is a paid event. Please use the payment flow to book your spot.',
+      isPaidEvent: true,
+      ticketPrice: event.ticketPrice,
+    });
+  }
+
   const currentCount = await EventParticipant.countDocuments({ event_id: event._id });
   if (currentCount >= event.maxAttendees) {
     return res.status(400).json({ message: 'Event is full' });
@@ -361,12 +376,13 @@ export async function joinEvent(req, res) {
   let participant;
   try {
     participant = await EventParticipant.create({
-      event_id: event._id,
+      event_id:       event._id,
       participant_id: req.user._id,
-      fullName: req.user.name,
-      phoneNumber: req.user.phoneNumber,
+      fullName:       req.user.name,
+      phoneNumber:    req.user.phoneNumber,
       whatsappNumber: req.user.whatsappNumber || req.user.phoneNumber,
-      profileId: String(req.user._id),
+      profileId:      String(req.user._id),
+      paymentStatus:  'free',
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -422,6 +438,173 @@ export async function joinEvent(req, res) {
     whatsapp: whatsappResult,
   });
 }
+
+// ─── Razorpay: create order ───────────────────────────────────────────────────
+
+export async function createPaymentOrder(req, res) {
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({ message: 'Payment service not configured' });
+  }
+
+  const event = await Event.findById(req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+
+  if (isOwner(event, req.user._id)) {
+    return res.status(400).json({ message: 'You cannot book your own event' });
+  }
+
+  if (!req.user.phoneNumber) {
+    return res.status(400).json({
+      message: 'Please update your profile with a phone number before booking',
+    });
+  }
+
+  if ((event.ticketPrice || 0) <= 0) {
+    return res.status(400).json({ message: 'This event is free — use the join endpoint instead' });
+  }
+
+  // Already joined (paid or pending)
+  const existing = await EventParticipant.findOne({
+    event_id:       event._id,
+    participant_id: req.user._id,
+  });
+  if (existing && existing.paymentStatus === 'paid') {
+    return res.status(400).json({ message: 'You have already booked this event' });
+  }
+
+  const currentCount = await EventParticipant.countDocuments({ event_id: event._id });
+  if (currentCount >= event.maxAttendees) {
+    return res.status(400).json({ message: 'Event is full' });
+  }
+
+  const receipt = `ev_${String(event._id).slice(-8)}_u${String(req.user._id).slice(-6)}`;
+  const order   = await razorpayCreateOrder({
+    amount:  event.ticketPrice,
+    receipt,
+    notes:   { eventId: String(event._id), userId: String(req.user._id) },
+  });
+
+  // Upsert a pending participant slot so the seat is reserved
+  await EventParticipant.findOneAndUpdate(
+    { event_id: event._id, participant_id: req.user._id },
+    {
+      $setOnInsert: {
+        event_id:       event._id,
+        participant_id: req.user._id,
+        fullName:       req.user.name,
+        phoneNumber:    req.user.phoneNumber,
+        whatsappNumber: req.user.whatsappNumber || req.user.phoneNumber,
+        profileId:      String(req.user._id),
+      },
+      $set: { paymentStatus: 'pending', orderId: order.id },
+    },
+    { upsert: true, new: true },
+  );
+
+  return res.json({
+    orderId:   order.id,
+    amount:    order.amount,    // in paise
+    currency:  order.currency,
+    keyId:     process.env.RAZORPAY_KEY_ID,
+    eventName: event.name,
+    userName:  req.user.name,
+    userEmail: req.user.email || '',
+    userPhone: req.user.phoneNumber || '',
+  });
+}
+
+// ─── Razorpay: verify & confirm booking ──────────────────────────────────────
+
+export async function verifyPayment(req, res) {
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({ message: 'Payment service not configured' });
+  }
+
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ message: 'Missing payment verification fields' });
+  }
+
+  const isValid = razorpayVerifySignature({
+    orderId:   razorpay_order_id,
+    paymentId: razorpay_payment_id,
+    signature: razorpay_signature,
+  });
+
+  if (!isValid) {
+    // Mark as failed
+    await EventParticipant.findOneAndUpdate(
+      { orderId: razorpay_order_id },
+      { $set: { paymentStatus: 'failed' } },
+    );
+    return res.status(400).json({ message: 'Payment verification failed. Please contact support.' });
+  }
+
+  const event = await Event.findById(req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+
+  // Confirm the participant
+  const participant = await EventParticipant.findOneAndUpdate(
+    { event_id: event._id, participant_id: req.user._id, orderId: razorpay_order_id },
+    {
+      $set: {
+        paymentStatus: 'paid',
+        paymentId:     razorpay_payment_id,
+        amountPaid:    event.ticketPrice,
+        joinedAt:      new Date(),
+      },
+    },
+    { new: true },
+  );
+
+  if (!participant) {
+    return res.status(404).json({ message: 'Booking record not found' });
+  }
+
+  // Notify the event owner
+  const notification = await Notification.create({
+    user_id: event.owner_id,
+    type:    'EVENT_JOIN',
+    title:   'New Paid Booking',
+    message: `${req.user.name} paid ₹${event.ticketPrice} and booked '${event.name}'`,
+    metadata: {
+      eventId:    String(event._id),
+      eventName:  event.name,
+      participantId: String(req.user._id),
+      fullName:   req.user.name,
+      phoneNumber: req.user.phoneNumber,
+      amountPaid: event.ticketPrice,
+    },
+  });
+
+  const io = getIO();
+  if (io) io.to(getUserRoom(event.owner_id)).emit('notification:new', notification);
+
+  // WhatsApp notification to owner
+  const owner = await User.findById(event.owner_id).select('name whatsappNumber phoneNumber');
+  sendEventJoinWhatsapp({
+    creatorName:           event.ownerName,
+    creatorWhatsappNumber: owner?.whatsappNumber || owner?.phoneNumber || null,
+    userName:    req.user.name,
+    eventTitle:  event.name,
+    phoneNumber: req.user.phoneNumber,
+  }).catch(() => {});
+
+  // Record recommendation signal
+  const populated = await event.populate('address');
+  recordSignal({
+    userId:     String(req.user._id),
+    eventId:    String(event._id),
+    category:   event.category,
+    city:       populated?.address?.city || '',
+    signalType: 'join',
+  }).catch(() => {});
+
+  return res.json({ message: 'Payment verified. Booking confirmed!', participant });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function getParticipants(req, res) {
   const event = await Event.findById(req.params.eventId);

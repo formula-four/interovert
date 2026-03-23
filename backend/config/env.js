@@ -32,6 +32,9 @@ const env = {
   get cloudinaryCloudName() { return globalThis.process.env.CLOUDINARY_CLOUD_NAME || ''; },
   get cloudinaryApiKey() { return globalThis.process.env.CLOUDINARY_API_KEY || ''; },
   get cloudinaryApiSecret() { return globalThis.process.env.CLOUDINARY_API_SECRET || ''; },
+  // Razorpay
+  get razorpayKeyId()     { return globalThis.process.env.RAZORPAY_KEY_ID     || ''; },
+  get razorpayKeySecret() { return globalThis.process.env.RAZORPAY_KEY_SECRET || ''; },
 };
 
 export function validateStartupEnv() {
