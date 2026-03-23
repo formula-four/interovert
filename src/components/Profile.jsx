@@ -1,20 +1,28 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { X, Settings, Edit2, Plus, Camera, Trash2, ChevronDown, Rocket, Users, Briefcase, GraduationCap, MapPin, Baby, Sparkles, Github, Linkedin, Twitter, Instagram, Facebook, Link, Save, ArrowLeft, Pencil } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Plus, Camera, Trash2, MapPin, Save, ArrowLeft, Pencil, Loader2, LogOut, Mail, Phone, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { clearSession, getAuthToken, getCurrentUser, setSession } from '../utils/session'
 import { disconnectSocket } from '../utils/socket'
 import apiClient from '../services/apiClient'
-import {
-  aboutMeOptions,
-  interestOptions,
-  lookingForOptions,
-  skillLevels,
-} from '../features/profile/constants'
+import { lookingForOptions } from '../features/profile/constants'
 import AddressFormModal from './AddressFormModal'
+
+/** Open Google Maps for a saved address (coordinates preferred, else text search). */
+function buildAddressMapHref(addr) {
+  const lat = addr.geocode?.lat
+  const lng = addr.geocode?.lng
+  if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`
+  }
+  const text =
+    String(addr.formattedAddress || '').trim() ||
+    [addr.line1, addr.line2, addr.city, addr.state, addr.postalCode, addr.country].filter(Boolean).join(', ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}`
+}
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -22,40 +30,19 @@ export default function Profile() {
     name: '',
     email: '',
     phone: '',
-    dateOfBirth: '',
     avatar: null,
     lookingFor: [],
-    interests: [],
-    customInterests: [],
-    aboutMe: [],
-    bio: '',
-    skills: {},
-    socialLinks: {
-      github: '',
-      linkedin: '',
-      twitter: '',
-      instagram: '',
-      facebook: '',
-      website: ''
-    },
-    customAboutMe: []
   })
-  
-  const [showAddInterest, setShowAddInterest] = useState(false)
-  const [newInterest, setNewInterest] = useState('')
-  const [isEditing, setIsEditing] = useState(true)
-  const [showAddCustomAboutMe, setShowAddCustomAboutMe] = useState(false)
-  const [newCustomAboutMe, setNewCustomAboutMe] = useState('')
+
   const fileInputRef = useRef(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [avatarBroken, setAvatarBroken] = useState(false)
 
-  // Address management
   const [addresses, setAddresses] = useState([])
   const [showAddressModal, setShowAddressModal] = useState(false)
   const [editingAddress, setEditingAddress] = useState(null)
 
   useEffect(() => {
-    const savedProfile = localStorage.getItem('profileData')
     const token = getAuthToken()
     const currentUser = getCurrentUser()
 
@@ -64,21 +51,12 @@ export default function Profile() {
       return
     }
 
-    if (savedProfile) {
-      try {
-        setProfileData(JSON.parse(savedProfile))
-      } catch {
-        // ignore malformed local profile cache
-      }
-    }
-
     if (currentUser) {
       setProfileData((prev) => ({
         ...prev,
         name: currentUser.name || prev.name,
         email: currentUser.email || prev.email,
         phone: currentUser.phoneNumber || prev.phone,
-        dateOfBirth: currentUser.dateOfBirth ? String(currentUser.dateOfBirth).slice(0, 10) : prev.dateOfBirth,
       }))
     }
 
@@ -90,17 +68,19 @@ export default function Profile() {
           name: data.name || prev.name,
           email: data.email || prev.email,
           phone: data.phoneNumber || prev.phone,
-          dateOfBirth: data.dateOfBirth ? String(data.dateOfBirth).slice(0, 10) : prev.dateOfBirth,
           avatar: data.profile?.avatar ?? prev.avatar,
           lookingFor: data.profile?.lookingFor ?? prev.lookingFor,
-          interests: data.profile?.interests ?? prev.interests,
-          customInterests: data.profile?.customInterests ?? prev.customInterests,
-          aboutMe: data.profile?.aboutMe ?? prev.aboutMe,
-          customAboutMe: data.profile?.customAboutMe ?? prev.customAboutMe,
-          bio: data.profile?.bio ?? prev.bio,
-          skills: data.profile?.skills ?? prev.skills,
-          socialLinks: data.profile?.socialLinks ?? prev.socialLinks,
         }))
+        if (Array.isArray(data.addresses)) {
+          setAddresses(data.addresses)
+        } else {
+          try {
+            const { data: list } = await apiClient.get('/api/addresses')
+            setAddresses(Array.isArray(list) ? list : [])
+          } catch (err) {
+            toast.error(err.response?.data?.message || 'Could not load saved addresses')
+          }
+        }
         setSession({
           token,
           user: {
@@ -118,17 +98,11 @@ export default function Profile() {
     }
 
     loadProfile()
-    loadAddresses()
   }, [navigate])
 
-  const loadAddresses = async () => {
-    try {
-      const { data } = await apiClient.get('/api/addresses')
-      setAddresses(data || [])
-    } catch {
-      // silent — addresses are optional
-    }
-  }
+  useEffect(() => {
+    setAvatarBroken(false)
+  }, [profileData.avatar])
 
   const handleAddressSaved = (saved) => {
     setAddresses((prev) => {
@@ -157,9 +131,9 @@ export default function Profile() {
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setProfileData(prev => ({
+        setProfileData((prev) => ({
           ...prev,
-          avatar: reader.result
+          avatar: reader.result,
         }))
       }
       reader.readAsDataURL(file)
@@ -167,89 +141,11 @@ export default function Profile() {
   }
 
   const toggleLookingFor = (option) => {
-    setProfileData(prev => ({
+    setProfileData((prev) => ({
       ...prev,
       lookingFor: prev.lookingFor.includes(option.id)
-        ? prev.lookingFor.filter(id => id !== option.id)
-        : [...prev.lookingFor, option.id]
-    }))
-  }
-
-  const addInterest = (interest) => {
-    if (interest === 'Other') {
-      setShowAddInterest(true)
-      return
-    }
-    
-    if (!profileData.interests.includes(interest)) {
-      setProfileData(prev => ({
-        ...prev,
-        interests: [...prev.interests, interest],
-        skills: { ...prev.skills, [interest]: 'Beginner' }
-      }))
-    }
-  }
-
-  const removeInterest = (interest) => {
-    setProfileData(prev => ({
-      ...prev,
-      interests: prev.interests.filter(i => i !== interest),
-      customInterests: prev.customInterests.filter(i => i !== interest),
-      skills: Object.fromEntries(Object.entries(prev.skills).filter(([key]) => key !== interest))
-    }))
-  }
-
-  const addCustomInterest = () => {
-    if (newInterest.trim() && !profileData.customInterests.includes(newInterest)) {
-      setProfileData(prev => ({
-        ...prev,
-        interests: [...prev.interests, newInterest],
-        customInterests: [...prev.customInterests, newInterest],
-        skills: { ...prev.skills, [newInterest]: 'Beginner' }
-      }))
-      setNewInterest('')
-      setShowAddInterest(false)
-    }
-  }
-
-  const toggleAboutMe = (optionId) => {
-    setProfileData(prev => ({
-      ...prev,
-      aboutMe: prev.aboutMe.includes(optionId)
-        ? prev.aboutMe.filter(id => id !== optionId)
-        : [...prev.aboutMe, optionId]
-    }))
-  }
-
-  const addCustomAboutMe = () => {
-    if (newCustomAboutMe.trim()) {
-      setProfileData(prev => ({
-        ...prev,
-        customAboutMe: [...prev.customAboutMe, newCustomAboutMe]
-      }))
-      setNewCustomAboutMe('')
-      setShowAddCustomAboutMe(false)
-    }
-  }
-
-  const removeCustomAboutMe = (item) => {
-    setProfileData(prev => ({
-      ...prev,
-      customAboutMe: prev.customAboutMe.filter(i => i !== item)
-    }))
-  }
-
-  const updateSkillLevel = (interest, level) => {
-    setProfileData(prev => ({
-      ...prev,
-      skills: { ...prev.skills, [interest]: level }
-    }))
-  }
-
-  const updateSocialLink = (platform, value) => {
-    setProfileData(prev => ({
-      ...prev,
-      socialLinks: { ...prev.socialLinks, [platform]: value }
+        ? prev.lookingFor.filter((id) => id !== option.id)
+        : [...prev.lookingFor, option.id],
     }))
   }
 
@@ -262,22 +158,12 @@ export default function Profile() {
 
     setIsSaving(true)
     try {
-      const { data } = await apiClient.put(
-        '/api/profile',
-        {
-          profile: {
-            avatar: profileData.avatar,
-            lookingFor: profileData.lookingFor,
-            interests: profileData.interests,
-            customInterests: profileData.customInterests,
-            aboutMe: profileData.aboutMe,
-            customAboutMe: profileData.customAboutMe,
-            bio: profileData.bio,
-            skills: profileData.skills,
-            socialLinks: profileData.socialLinks,
-          },
-        }
-      )
+      const { data } = await apiClient.put('/api/profile', {
+        profile: {
+          avatar: profileData.avatar,
+          lookingFor: profileData.lookingFor,
+        },
+      })
 
       setSession({
         token,
@@ -287,29 +173,19 @@ export default function Profile() {
           email: data.email,
           phoneNumber: data.phoneNumber,
           whatsappNumber: data.whatsappNumber,
-            dateOfBirth: data.dateOfBirth,
+          dateOfBirth: data.dateOfBirth,
         },
       })
 
-      const updatedProfile = {
-        ...profileData,
-        name: data.name || profileData.name,
-        email: data.email || profileData.email,
-        phone: data.phoneNumber || profileData.phone,
-        dateOfBirth: data.dateOfBirth ? String(data.dateOfBirth).slice(0, 10) : profileData.dateOfBirth,
-        avatar: data.profile?.avatar ?? profileData.avatar,
-        lookingFor: data.profile?.lookingFor ?? profileData.lookingFor,
-        interests: data.profile?.interests ?? profileData.interests,
-        customInterests: data.profile?.customInterests ?? profileData.customInterests,
-        aboutMe: data.profile?.aboutMe ?? profileData.aboutMe,
-        customAboutMe: data.profile?.customAboutMe ?? profileData.customAboutMe,
-        bio: data.profile?.bio ?? profileData.bio,
-        skills: data.profile?.skills ?? profileData.skills,
-        socialLinks: data.profile?.socialLinks ?? profileData.socialLinks,
-      };
-      setProfileData(updatedProfile)
+      setProfileData((prev) => ({
+        ...prev,
+        name: data.name || prev.name,
+        email: data.email || prev.email,
+        phone: data.phoneNumber || prev.phone,
+        avatar: data.profile?.avatar ?? prev.avatar,
+        lookingFor: data.profile?.lookingFor ?? prev.lookingFor,
+      }))
 
-      localStorage.setItem('profileData', JSON.stringify(updatedProfile))
       toast.success('Profile saved')
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to save profile')
@@ -325,504 +201,244 @@ export default function Profile() {
     navigate('/login')
   }
 
+  const inputReadonly =
+    'w-full rounded-xl border border-zinc-700/60 bg-zinc-950/50 px-3 py-2.5 text-left text-sm text-zinc-200 cursor-not-allowed'
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        
-        <div className="flex justify-between items-center">
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="p-2 rounded-full bg-gray-800 hover:bg-gray-700"
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft size={24} />
-          </motion.button>
-          <div className="flex gap-4">
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-2 rounded-full bg-gray-800 hover:bg-gray-700"
-              onClick={() => setIsEditing(true)}
-            >
-              <Edit2 size={24} />
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-2 rounded-full bg-gray-800 hover:bg-gray-700"
-            >
-              <Settings size={24} />
-            </motion.button>
-          </div>
-        </div>
+    <div className="relative min-h-screen overflow-x-hidden bg-zinc-950 pt-24 text-zinc-100 sm:pt-28">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.12),transparent_50%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_40%,rgba(139,92,246,0.06),transparent_45%)]"
+        aria-hidden
+      />
 
-        <div className="flex flex-col items-center">
-          <div className="relative">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              className="w-40 h-40 rounded-full bg-gray-800 flex items-center justify-center overflow-hidden"
-            >
-              {profileData.avatar ? (
-                <img 
-                  src={profileData.avatar} 
-                  alt="Profile" 
-                  className="w-full h-full object-cover"
+      <div className="relative mx-auto max-w-3xl px-4 pb-24 pt-2 sm:px-6 lg:px-8">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-zinc-500 transition hover:text-white"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back
+        </button>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/50 shadow-2xl ring-1 ring-white/[0.04] backdrop-blur-sm"
+        >
+          <div className="border-b border-zinc-800/80 bg-gradient-to-r from-zinc-900/90 to-zinc-950/90 px-6 py-8 sm:px-8">
+            <div className="flex flex-col items-center justify-center">
+              <div className="relative shrink-0">
+                <div
+                  className="absolute inset-0 -m-2 rounded-full bg-gradient-to-tr from-indigo-500/20 to-violet-500/10 blur-xl"
+                  aria-hidden
                 />
-              ) : (
-                <span className="text-6xl">{profileData.name ? profileData.name[0].toUpperCase() : 'M'}</span>
-              )}
-            </motion.div>
-            <motion.label
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="absolute bottom-0 right-0 p-2 rounded-full bg-indigo-600 cursor-pointer"
-            >
-              <Camera size={24} />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                ref={fileInputRef}
-              />
-            </motion.label>
-          </div>
-        </div>
-
-
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">Basic Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
-              <input
-                type="text"
-                value={profileData.name}
-                readOnly
-                disabled
-                className="w-full bg-gray-700 rounded-lg px-4 py-2 opacity-80 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
-              <input
-                type="email"
-                value={profileData.email}
-                readOnly
-                disabled
-                className="w-full bg-gray-700 rounded-lg px-4 py-2 opacity-80 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Phone</label>
-              <input
-                type="tel"
-                value={profileData.phone}
-                readOnly
-                disabled
-                className="w-full bg-gray-700 rounded-lg px-4 py-2 opacity-80 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Date of Birth</label>
-              <input
-                type="date"
-                value={profileData.dateOfBirth}
-                readOnly
-                disabled
-                className="w-full bg-gray-700 rounded-lg px-4 py-2 opacity-80 cursor-not-allowed"
-              />
-            </div>
-          </div>
-        </motion.section>
-
-        
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">I'm looking to</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {lookingForOptions.map((option) => (
-              <motion.button
-                key={option.id}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => toggleLookingFor(option)}
-                className={`p-4 rounded-lg border-2 border-dashed flex items-center gap-2
-                  ${profileData.lookingFor.includes(option.id)
-                    ? 'border-green-500 bg-green-500/20'
-                    : 'border-gray-700 hover:border-gray-600'
-                  }`}
-              >
-                <span className="text-xl">{option.icon}</span>
-                <span>{option.label}</span>
-              </motion.button>
-            ))}
-          </div>
-        </motion.section>
-
-
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">
-            Interests and Skills ({profileData.interests.length})
-          </h2>
-          <div className="space-y-4">
-            {profileData.interests.map((interest) => (
-              <div key={interest} className="flex items-center justify-between bg-gray-700 rounded-lg p-4">
-                <span>{interest}</span>
-                <div className="flex items-center gap-4">
-                  <select
-                    value={profileData.skills[interest]}
-                    onChange={(e) => updateSkillLevel(interest, e.target.value)}
-                    className="bg-gray-600 rounded-lg px-2 py-1"
-                  >
-                    {skillLevels.map((level) => (
-                      <option key={level} value={level}>{level}</option>
-                    ))}
-                  </select>
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => removeInterest(interest)}
-                    className="text-red-500 hover:text-red-400"
-                  >
-                    <Trash2 size={20} />
-                  </motion.button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowAddInterest(true)}
-            className="w-full bg-indigo-600 rounded-lg px-4 py-2 mt-4 flex items-center justify-center gap-2"
-          >
-            <Plus size={20} />
-            Add Interest
-          </motion.button>
-
-          
-          <AnimatePresence>
-            {showAddInterest && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-              >
-                <motion.div
-                  initial={{ scale: 0.95 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.95 }}
-                  className="bg-gray-800 rounded-xl p-6 max-w-md w-full"
-                >
-                  <h3 className="text-xl font-semibold mb-4">Add Interest</h3>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      {interestOptions.map((interest) => (
-                        <motion.button
-                          key={interest}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => addInterest(interest)}
-                          className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
-                        >
-                          {interest}
-                        </motion.button>
-                      ))}
-                    </div>
-                    {newInterest && (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newInterest}
-                          onChange={(e) => setNewInterest(e.target.value)}
-                          placeholder="Enter custom interest"
-                          className="flex-1 bg-gray-700 rounded-lg px-4 py-2"
-                        />
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={addCustomInterest}
-                          className="bg-indigo-600 rounded-lg px-4 py-2"
-                        >
-                          Add
-                        </motion.button>
-                      </div>
-                    )}
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setShowAddInterest(false)}
-                      className="w-full bg-gray-700 rounded-lg px-4 py-2 mt-4"
-                    >
-                      Close
-                    </motion.button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.section>
-
-        
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">About me</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {aboutMeOptions.map((option) => (
-              <motion.button
-                key={option.id}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => toggleAboutMe(option.id)}
-                className={`p-4 rounded-lg border-2 border-dashed flex items-center gap-2
-                  ${profileData.aboutMe.includes(option.id)
-                    ? 'border-green-500 bg-green-500/20'
-                    : 'border-gray-700 hover:border-gray-600'
-                  }`}
-              >
-                <span className="text-xl">{option.icon}</span>
-                <span>{option.label}</span>
-              </motion.button>
-            ))}
-          </div>
-          <div className="space-y-2">
-            {profileData.customAboutMe.map((item, index) => (
-              <div key={index} className="flex items-center justify-between bg-gray-700 rounded-lg p-2">
-                <span>{item}</span>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => removeCustomAboutMe(item)}
-                  className="text-red-500 hover:text-red-400"
-                >
-                  <Trash2 size={20} />
-                </motion.button>
-              </div>
-            ))}
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowAddCustomAboutMe(true)}
-            className="w-full bg-indigo-600 rounded-lg px-4 py-2 mt-4 flex items-center justify-center gap-2"
-          >
-            <Plus size={20} />
-            Add Custom About Me
-          </motion.button>
-
-          
-          <AnimatePresence>
-            {showAddCustomAboutMe && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-              >
-                <motion.div
-                  initial={{ scale: 0.95 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.95 }}
-                  className="bg-gray-800 rounded-xl p-6 max-w-md w-full"
-                >
-                  <h3 className="text-xl font-semibold mb-4">Add Custom About Me</h3>
-                  <div className="space-y-4">
-                    <input
-                      type="text"
-                      value={newCustomAboutMe}
-                      onChange={(e) => setNewCustomAboutMe(e.target.value)}
-                      placeholder="Enter custom about me"
-                      className="w-full bg-gray-700 rounded-lg px-4 py-2"
+                <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 ring-2 ring-zinc-700/80 sm:h-32 sm:w-32">
+                  {profileData.avatar && !avatarBroken ? (
+                    <img
+                      src={profileData.avatar}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      onError={() => setAvatarBroken(true)}
                     />
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={addCustomAboutMe}
-                      className="w-full bg-indigo-600 rounded-lg px-4 py-2"
-                    >
-                      Add
-                    </motion.button>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setShowAddCustomAboutMe(false)}
-                      className="w-full bg-gray-700 rounded-lg px-4 py-2"
-                    >
-                      Close
-                    </motion.button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.section>
-
-        
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">Bio</h2>
-          <motion.div
-            whileHover={{ scale: 1.01 }}
-            className="relative"
-          >
-            <textarea
-              value={profileData.bio}
-              onChange={(e) => setProfileData(prev => ({ ...prev, bio: e.target.value }))}
-              placeholder="Introduce yourself to others on Meetup. This can be short and simple."
-              className="w-full h-32 bg-gray-700 rounded-lg p-4 resize-none focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-            />
-          </motion.div>
-        </motion.section>
-
-
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <h2 className="text-2xl font-semibold">Social Links</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(profileData.socialLinks).map(([platform, link]) => (
-              <div key={platform} className="flex items-center gap-2">
-                {platform === 'github' && <Github size={20} />}
-                {platform === 'linkedin' && <Linkedin size={20} />}
-                {platform === 'twitter' && <Twitter size={20} />}
-                {platform === 'instagram' && <Instagram size={20} />}
-                {platform === 'facebook' && <Facebook size={20} />}
-                {platform === 'website' && <Link size={20} />}
-                <input
-                  type="url"
-                  value={link}
-                  onChange={(e) => updateSocialLink(platform, e.target.value)}
-                  placeholder={`${platform.charAt(0).toUpperCase() + platform.slice(1)} URL`}
-                  className="flex-1 bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                />
-              </div>
-            ))}
-          </div>
-        </motion.section>
-
-        {/* ── My Addresses ── */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold flex items-center gap-2">
-              <MapPin size={22} className="text-indigo-400" />
-              My Addresses
-            </h2>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => { setEditingAddress(null); setShowAddressModal(true) }}
-              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
-            >
-              <Plus size={16} />
-              Add Address
-            </motion.button>
-          </div>
-
-          {addresses.length === 0 && (
-            <p className="text-gray-400 text-sm">No saved addresses yet. Add one above.</p>
-          )}
-
-          <div className="space-y-3">
-            {addresses.map((addr) => (
-              <div key={addr._id} className="bg-gray-700 rounded-lg p-4 flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-indigo-300 bg-indigo-900/40 px-2 py-0.5 rounded">
-                      {addr.label || 'Address'}
+                  ) : (
+                    <span className="text-3xl font-semibold text-indigo-200 sm:text-4xl">
+                      {profileData.name ? profileData.name.charAt(0).toUpperCase() : '?'}
                     </span>
-                    {addr.geocode?.lat && (
-                      <a
-                        href={`https://www.openstreetmap.org/?mlat=${addr.geocode.lat}&mlon=${addr.geocode.lng}#map=16/${addr.geocode.lat}/${addr.geocode.lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                        title="View on map"
-                      >
-                        <MapPin size={12} />
-                        Map
-                      </a>
-                    )}
-                  </div>
-                  <p className="text-white text-sm font-medium">{addr.line1}{addr.line2 ? `, ${addr.line2}` : ''}</p>
-                  <p className="text-gray-300 text-sm">
-                    {[addr.city, addr.state, addr.postalCode, addr.country].filter(Boolean).join(', ')}
-                  </p>
-                  {addr.geocode?.lat && (
-                    <p className="text-gray-500 text-xs mt-1">
-                      📍 {addr.geocode.lat.toFixed(5)}, {addr.geocode.lng.toFixed(5)}
-                    </p>
                   )}
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => { setEditingAddress(addr); setShowAddressModal(true) }}
-                    className="p-1.5 rounded-lg bg-gray-600 hover:bg-indigo-600 text-gray-300 hover:text-white transition-colors"
-                    title="Edit"
-                  >
-                    <Pencil size={15} />
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => handleDeleteAddress(addr._id)}
-                    className="p-1.5 rounded-lg bg-gray-600 hover:bg-red-600 text-gray-300 hover:text-white transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={15} />
-                  </motion.button>
+                <label className="absolute bottom-0 right-0 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg ring-2 ring-zinc-900 transition hover:from-indigo-500 hover:to-violet-500">
+                  <Camera className="h-4 w-4" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    ref={fileInputRef}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-0 divide-y divide-zinc-800/80">
+            <section className="px-6 py-6 sm:px-8">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Contact</h2>
+              <p className="mt-1 text-sm text-zinc-600">From your account — update via support if something is wrong.</p>
+              <div className="mt-5 space-y-4">
+                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
+                  <User className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Name</p>
+                    <input type="text" value={profileData.name} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
+                  </div>
+                </div>
+                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Email</p>
+                    <input type="email" value={profileData.email} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
+                  </div>
+                </div>
+                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
+                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Phone</p>
+                    <input type="tel" value={profileData.phone} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </motion.section>
+            </section>
 
-        <div className="flex flex-wrap justify-center gap-3 pt-2">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 px-4 py-2 rounded-lg inline-flex items-center gap-2"
-          >
-            <Save size={18} />
-            {isSaving ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg"
-          >
-            Logout
-          </button>
-        </div>
+            <section className="px-6 py-6 sm:px-8">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">What you&apos;re here for</h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                Meetups, friends, hobbies — we use this to suggest events and people you might click with.
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {lookingForOptions.map((option) => {
+                  const on = profileData.lookingFor.includes(option.id)
+                  return (
+                    <motion.button
+                      key={option.id}
+                      type="button"
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => toggleLookingFor(option)}
+                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
+                        on
+                          ? 'border-indigo-500/45 bg-indigo-500/10 text-indigo-100 ring-1 ring-indigo-500/20'
+                          : 'border-zinc-800/80 bg-zinc-950/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span className="text-lg" aria-hidden>
+                        {option.icon}
+                      </span>
+                      {option.label}
+                    </motion.button>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="px-6 py-6 sm:px-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  <MapPin className="h-4 w-4 text-indigo-400" />
+                  Your addresses
+                </h2>
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setEditingAddress(null)
+                    setShowAddressModal(true)
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add address
+                </motion.button>
+              </div>
+
+              {addresses.length === 0 ? (
+                <div className="mt-4 space-y-2 rounded-xl border border-dashed border-zinc-800/80 bg-zinc-950/30 py-8 px-4 text-center text-sm text-zinc-600">
+                  <p>No addresses on your profile yet.</p>
+                  <p className="text-xs text-zinc-500">
+                    If you signed up before map verification, use &quot;Add address&quot; with a full street and city so we can confirm it on the map.
+                    New signups store the address from registration here automatically.
+                  </p>
+                </div>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {addresses.map((addr) => (
+                    <li
+                      key={addr._id}
+                      className="flex items-stretch gap-2 rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-1 sm:gap-3"
+                    >
+                      <a
+                        href={buildAddressMapHref(addr)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 flex-1 rounded-lg px-3 py-3 text-left outline-none ring-indigo-500/0 transition hover:bg-zinc-800/50 hover:ring-1 hover:ring-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                      >
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+                            {addr.label || 'Address'}
+                          </span>
+                          <span className="text-[11px] font-medium text-emerald-400/90">Open in Maps →</span>
+                        </div>
+                        <p className="text-sm font-medium text-white">
+                          {addr.line1}
+                          {addr.line2 ? `, ${addr.line2}` : ''}
+                        </p>
+                        <p className="text-sm text-zinc-500">
+                          {[addr.city, addr.state, addr.postalCode, addr.country].filter(Boolean).join(', ')}
+                        </p>
+                      </a>
+                      <div className="flex shrink-0 flex-col justify-start gap-1 border-l border-zinc-800/60 pl-1 sm:flex-row sm:items-start sm:border-l-0 sm:pl-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setEditingAddress(addr)
+                            setShowAddressModal(true)
+                          }}
+                          className="rounded-xl p-2 text-zinc-500 hover:bg-zinc-800 hover:text-indigo-300"
+                          aria-label="Edit address"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleDeleteAddress(addr._id)
+                          }}
+                          className="rounded-xl p-2 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+                          aria-label="Delete address"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <div className="flex flex-col-reverse gap-3 px-6 py-6 sm:flex-row sm:justify-end sm:px-8">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/50 px-6 py-3 text-sm font-semibold text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </button>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSave}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/35 disabled:opacity-60"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSaving ? 'Saving…' : 'Save changes'}
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
       </div>
 
-      {/* Address create / edit modal */}
       <AddressFormModal
         isOpen={showAddressModal}
         onClose={() => setShowAddressModal(false)}
@@ -832,4 +448,3 @@ export default function Profile() {
     </div>
   )
 }
-

@@ -10,10 +10,7 @@ import {
   ChevronRight,
   X,
   Search,
-  Download,
   Phone,
-  CheckCircle2,
-  Clock,
   Ticket,
   ArrowUpRight,
   LayoutDashboard,
@@ -27,7 +24,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
-  Filter,
+  Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
@@ -82,25 +79,48 @@ function fmtTime(date) {
     : ''
 }
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+// ─── KPI Card ───────────────────────────────────────────────────────────────
 
-function KpiCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
+const KPI_ACCENT = {
+  indigo:  'from-indigo-500/20 to-violet-500/10 text-indigo-300 ring-indigo-400/25',
+  violet:  'from-violet-500/20 to-fuchsia-500/10 text-violet-300 ring-violet-400/25',
+  emerald: 'from-emerald-500/20 to-teal-500/10 text-emerald-300 ring-emerald-400/25',
+  amber:   'from-amber-500/20 to-orange-500/10 text-amber-300 ring-amber-400/25',
+}
+
+function KpiCard({ icon: Icon, label, value, sub, accent, delay = 0 }) {
+  const accentCls = KPI_ACCENT[accent] || KPI_ACCENT.indigo
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl shadow-black/30"
+      transition={{ delay, type: 'spring', stiffness: 380, damping: 28 }}
+      whileHover={{ y: -2 }}
+      className="group relative overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/90 to-zinc-950 p-6 shadow-lg shadow-black/20 ring-1 ring-white/[0.04] transition-shadow duration-300 hover:border-zinc-700/80 hover:shadow-xl hover:shadow-indigo-950/25"
     >
-      <div className={`absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-10 ${color}`} />
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">{label}</p>
-          <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-          {sub && <p className="mt-1 text-xs text-zinc-500">{sub}</p>}
+      <div
+        className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br opacity-40 blur-2xl transition-opacity duration-500 group-hover:opacity-60"
+        style={{
+          background: accent === 'indigo'
+            ? 'linear-gradient(135deg, rgb(99 102 241 / 0.5), rgb(139 92 246 / 0.2))'
+            : accent === 'violet'
+              ? 'linear-gradient(135deg, rgb(139 92 246 / 0.5), rgb(217 70 239 / 0.2))'
+              : accent === 'emerald'
+                ? 'linear-gradient(135deg, rgb(16 185 129 / 0.45), rgb(20 184 166 / 0.2))'
+                : 'linear-gradient(135deg, rgb(245 158 11 / 0.45), rgb(249 115 22 / 0.2))',
+        }}
+      />
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      <div className="relative flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+          <p className="mt-2.5 truncate text-3xl font-bold tracking-tight text-white tabular-nums">{value}</p>
+          {sub && <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">{sub}</p>}
         </div>
-        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${color} bg-opacity-20 ring-1 ring-white/10`}>
-          <Icon className="h-5 w-5 text-white" />
+        <span
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${accentCls} ring-1 backdrop-blur-sm`}
+        >
+          <Icon className="h-5 w-5" strokeWidth={2} />
         </span>
       </div>
     </motion.div>
@@ -147,44 +167,50 @@ function ParticipantsDrawer({ eventId, eventName, ticketPrice, onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-end bg-black/60 backdrop-blur-sm sm:items-start sm:pt-16"
+      className="fixed inset-0 z-50 flex items-end justify-end bg-zinc-950/75 backdrop-blur-md sm:items-start sm:pt-20"
       onClick={onClose}
     >
       <motion.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="relative flex h-full w-full max-w-2xl flex-col bg-zinc-950 shadow-2xl sm:h-[calc(100vh-4rem)] sm:rounded-l-2xl"
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-zinc-800/80 bg-gradient-to-b from-zinc-900/95 to-zinc-950 shadow-2xl shadow-indigo-950/20 ring-1 ring-white/[0.04] sm:h-[calc(100vh-5rem)] sm:rounded-l-3xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_80%_100%_at_50%_0%,rgba(99,102,241,0.12),transparent)]" />
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-zinc-800 px-6 py-5">
+        <div className="relative flex items-start justify-between border-b border-zinc-800/80 px-6 py-5">
           <div>
-            <h2 className="text-lg font-semibold text-white">{eventName}</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-400/90">Guest list</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">{eventName}</h2>
+            <p className="mt-1 text-xs text-zinc-500">
               {participants.length} participant{participants.length !== 1 ? 's' : ''}
-              {ticketPrice > 0 && ` · ₹${revenue} collected`}
+              {ticketPrice > 0 && (
+                <span className="text-emerald-400/90"> · ₹{revenue} collected</span>
+              )}
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+            className="rounded-xl p-2 text-zinc-400 ring-1 ring-zinc-700/50 transition hover:bg-zinc-800/80 hover:text-white"
+            aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Search */}
-        <div className="border-b border-zinc-800/60 px-6 py-3">
+        <div className="relative border-b border-zinc-800/60 px-6 py-3">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
               type="search"
               placeholder="Search by name, phone, status…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700/60 bg-zinc-800/60 py-2 pl-8 pr-3 text-xs text-white placeholder:text-zinc-500 focus:border-indigo-500/60 focus:outline-none"
+              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/50 py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 backdrop-blur-sm focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
             />
           </div>
         </div>
@@ -201,8 +227,8 @@ function ParticipantsDrawer({ eventId, eventName, ticketPrice, onClose }) {
             </p>
           ) : (
             <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="sticky top-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-sm">
-                <tr className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              <thead className="sticky top-0 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
+                <tr className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
                   <th className="px-6 py-3 w-8">#</th>
                   <th className="px-6 py-3">Participant</th>
                   <th className="px-6 py-3">Phone</th>
@@ -213,7 +239,7 @@ function ParticipantsDrawer({ eventId, eventName, ticketPrice, onClose }) {
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
                 {filtered.map((p, idx) => (
-                  <tr key={p._id} className="transition-colors hover:bg-zinc-900/60">
+                  <tr key={p._id} className="transition-colors hover:bg-indigo-500/[0.04]">
                     <td className="px-6 py-3.5 text-xs text-zinc-600">{idx + 1}</td>
                     <td className="px-6 py-3.5">
                       <div className="flex items-center gap-3">
@@ -358,142 +384,180 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-950 pt-28">
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.15),transparent_50%)]"
+          aria-hidden
+        />
+        <Loader2 className="relative h-9 w-9 animate-spin text-indigo-400" aria-label="Loading" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 sm:px-8">
-      <div className="mx-auto max-w-7xl">
+    <div className="relative min-h-screen overflow-hidden bg-zinc-950 pt-28 text-zinc-100">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.18),transparent_50%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_40%,rgba(139,92,246,0.09),transparent_45%)]"
+        aria-hidden
+      />
 
-        {/* Page header */}
-        <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/15 ring-1 ring-indigo-500/25">
-              <LayoutDashboard className="h-5 w-5 text-indigo-400" />
-            </span>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Host Dashboard</h1>
-              <p className="text-sm text-zinc-500">Your events at a glance</p>
-            </div>
+      <div className="relative mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+
+        {/* Page header — matches Events page rhythm */}
+        <motion.header
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mb-10 flex flex-col gap-6 border-b border-zinc-800/80 pb-10 sm:flex-row sm:items-end sm:justify-between"
+        >
+          <div className="max-w-2xl">
+            <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-400/90">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden />
+              Host insights
+            </p>
+            <h1 className="mt-2 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+              Dashboard
+            </h1>
+            <p className="mt-3 max-w-lg text-base leading-relaxed text-zinc-400">
+              Track attendance, revenue, and capacity across every event you host—clear, calm, and in one place.
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
+          <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => fetchData(true)}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-900/60 px-5 py-3 text-sm font-semibold text-zinc-200 shadow-sm ring-1 ring-white/[0.04] backdrop-blur-sm transition hover:border-zinc-600 hover:bg-zinc-800/80 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
-            </button>
-            <Link
-              to="/events"
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500"
-            >
-              Browse events
-              <ArrowUpRight className="h-4 w-4" />
-            </Link>
+            </motion.button>
+            <motion.span whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="inline-flex">
+              <Link
+                to="/events"
+                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:from-indigo-500 hover:to-violet-500"
+              >
+                Browse events
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </motion.span>
           </div>
-        </div>
+        </motion.header>
 
         {/* KPI Cards */}
-        <div className="mb-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-12 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             icon={Calendar}
-            label="Events Hosted"
+            label="Events hosted"
             value={stats?.totalEvents ?? 0}
             sub="Total events you created"
-            color="bg-indigo-500"
+            accent="indigo"
             delay={0}
           />
           <KpiCard
             icon={Users}
-            label="Total Participants"
+            label="Total participants"
             value={stats?.totalParticipants ?? 0}
             sub="Across all your events"
-            color="bg-violet-500"
+            accent="violet"
             delay={0.06}
           />
           <KpiCard
             icon={IndianRupee}
-            label="Total Revenue"
+            label="Total revenue"
             value={`₹${(stats?.totalRevenue ?? 0).toLocaleString('en-IN')}`}
             sub="From paid bookings"
-            color="bg-emerald-500"
+            accent="emerald"
             delay={0.12}
           />
           <KpiCard
             icon={TrendingUp}
-            label="Avg. Attendees"
+            label="Avg. attendees"
             value={
               (stats?.totalEvents ?? 0) > 0
                 ? Math.round((stats.totalParticipants / stats.totalEvents) * 10) / 10
                 : 0
             }
             sub="Per event average"
-            color="bg-amber-500"
+            accent="amber"
             delay={0.18}
           />
         </div>
 
         {/* Events Table */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.22 }}
-          className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-xl shadow-black/30"
+          transition={{ delay: 0.2, type: 'spring', stiffness: 320, damping: 28 }}
+          className="relative overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/85 to-zinc-950 shadow-xl shadow-black/25 ring-1 ring-white/[0.04]"
         >
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/35 to-transparent"
+            aria-hidden
+          />
           {/* Table header */}
-          <div className="border-b border-zinc-800/80 px-6 py-5 space-y-4">
+          <div className="border-b border-zinc-800/80 px-5 py-5 sm:px-6 space-y-4">
 
             {/* Top row: title + search + toggle */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold text-white">Your Events</h2>
-                <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-semibold text-zinc-400">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-500/25">
+                  <LayoutDashboard className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight text-white">Your events</h2>
+                  <p className="text-xs text-zinc-500">Manage listings and guest lists</p>
+                </div>
+                <span className="rounded-full bg-zinc-950/80 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-400 ring-1 ring-zinc-800">
                   {filteredEvents.length}/{events.length}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Search */}
-                <div className="relative">
+                <div className="relative min-w-[10rem] flex-1 sm:flex-initial sm:min-w-[11rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
                   <input
                     type="search"
                     placeholder="Search events…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-44 rounded-lg border border-zinc-700/60 bg-zinc-800/60 py-2 pl-8 pr-3 text-xs text-white placeholder:text-zinc-500 focus:border-indigo-500/60 focus:outline-none"
+                    className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/40 py-2 pl-9 pr-3 text-sm text-white placeholder:text-zinc-500 backdrop-blur-sm focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25"
                   />
                 </div>
 
                 {/* Filters toggle */}
                 <button
+                  type="button"
                   onClick={() => setFiltersOpen((o) => !o)}
-                  className={`relative inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  className={`relative inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
                     filtersOpen || activeFilterCount > 0
-                      ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300'
-                      : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                      ? 'border-indigo-500/45 bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-500/20'
+                      : 'border-zinc-700/80 bg-zinc-950/50 text-zinc-300 ring-1 ring-white/[0.03] hover:border-zinc-600 hover:bg-zinc-900/60'
                   }`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   Filters
                   {activeFilterCount > 0 && (
-                    <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                    <span className="ml-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-indigo-500 px-1 text-[10px] font-bold text-white">
                       {activeFilterCount}
                     </span>
                   )}
-                  {filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  {filtersOpen ? <ChevronUp className="h-3 w-3 opacity-70" /> : <ChevronDown className="h-3 w-3 opacity-70" />}
                 </button>
 
                 {/* Clear all */}
                 {activeFilterCount > 0 && (
                   <button
+                    type="button"
                     onClick={clearFilters}
-                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:bg-zinc-700 hover:text-white"
+                    className="inline-flex items-center gap-1 rounded-xl border border-zinc-700/80 bg-zinc-950/40 px-3 py-2 text-xs font-semibold text-zinc-400 ring-1 ring-white/[0.03] transition hover:border-zinc-600 hover:text-white"
                   >
                     <X className="h-3.5 w-3.5" />
                     Clear
@@ -589,23 +653,33 @@ export default function Dashboard() {
           </div>
 
           {filteredEvents.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800 ring-1 ring-zinc-700">
-                <Calendar className="h-6 w-6 text-zinc-500" />
+            <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/12 text-indigo-400 ring-1 ring-indigo-500/25">
+                <Calendar className="h-8 w-8" />
               </span>
-              <p className="font-medium text-zinc-400">
+              <p className="max-w-sm font-medium text-zinc-300">
                 {activeFilterCount > 0 ? 'No events match your filters' : "You haven't created any events yet"}
               </p>
+              <p className="max-w-xs text-sm text-zinc-500">
+                {activeFilterCount > 0
+                  ? 'Try clearing filters or broadening your search.'
+                  : 'Host your first gathering from the events page—it will show up here automatically.'}
+              </p>
               {activeFilterCount > 0 ? (
-                <button onClick={clearFilters} className="mt-1 text-sm text-indigo-400 hover:text-indigo-300 hover:underline">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-2 rounded-xl bg-zinc-800 px-5 py-2.5 text-sm font-semibold text-white ring-1 ring-zinc-600 transition hover:bg-zinc-700"
+                >
                   Clear filters
                 </button>
               ) : (
                 <Link
                   to="/events"
-                  className="mt-1 text-sm text-indigo-400 hover:text-indigo-300 hover:underline"
+                  className="mt-2 inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/30 transition hover:from-indigo-500 hover:to-violet-500"
                 >
-                  Go create one →
+                  Create an event
+                  <ArrowUpRight className="h-4 w-4" />
                 </Link>
               )}
             </div>
@@ -613,7 +687,7 @@ export default function Dashboard() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-800/80 bg-zinc-950/60 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                  <tr className="border-b border-zinc-800/80 bg-zinc-950/70 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 backdrop-blur-sm">
                     <th className="px-6 py-3">#</th>
                     <th className="px-6 py-3">Event</th>
                     <th className="px-6 py-3">Date & Time</th>
@@ -625,7 +699,7 @@ export default function Dashboard() {
                     <th className="px-6 py-3"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/50">
+                <tbody>
                   {filteredEvents.map((ev, idx) => {
                     const photo = getDisplayEventPhotoUrl(ev.photo, 80)
                     const dot   = CATEGORY_DOT[ev.category] || CATEGORY_DOT.Other
@@ -634,7 +708,7 @@ export default function Dashboard() {
                       : 0
 
                     return (
-                      <tr key={ev._id} className="group transition-colors hover:bg-zinc-800/30">
+                      <tr key={ev._id} className="group border-b border-zinc-800/40 transition-colors last:border-0 hover:bg-indigo-500/[0.04]">
                         {/* # */}
                         <td className="px-6 py-4 text-xs text-zinc-600">{idx + 1}</td>
 
@@ -728,10 +802,10 @@ export default function Dashboard() {
                             onClick={() =>
                               setDrawerEvent({ _id: ev._id, name: ev.name, ticketPrice: ev.ticketPrice || 0 })
                             }
-                            className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 ring-1 ring-zinc-700 transition hover:bg-zinc-700 hover:text-white"
+                            className="inline-flex items-center gap-1 rounded-xl bg-zinc-950/60 px-3.5 py-2 text-xs font-semibold text-indigo-200 ring-1 ring-indigo-500/25 transition hover:bg-indigo-500/15 hover:text-white"
                           >
                             Participants
-                            <ChevronRight className="h-3.5 w-3.5" />
+                            <ChevronRight className="h-3.5 w-3.5 opacity-80" />
                           </button>
                         </td>
                       </tr>
@@ -744,9 +818,11 @@ export default function Dashboard() {
 
           {/* Table footer */}
           {filteredEvents.length > 0 && (
-            <div className="border-t border-zinc-800/60 px-6 py-3">
-              <p className="text-xs text-zinc-600">
-                Showing {filteredEvents.length} of {events.length} event{events.length !== 1 ? 's' : ''}
+            <div className="border-t border-zinc-800/60 bg-zinc-950/40 px-5 py-3.5 sm:px-6">
+              <p className="text-xs font-medium text-zinc-500">
+                Showing <span className="tabular-nums text-zinc-400">{filteredEvents.length}</span> of{' '}
+                <span className="tabular-nums text-zinc-400">{events.length}</span> event
+                {events.length !== 1 ? 's' : ''}
               </p>
             </div>
           )}

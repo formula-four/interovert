@@ -2,10 +2,11 @@ import React from 'react';
 import { GraduationCap, MapPin, Edit2, Baby, Briefcase } from 'lucide-react';
 
 export const lookingForOptions = [
-  { id: 'hobbies', label: 'Practice Hobbies', icon: '🎨' },
-  { id: 'socialize', label: 'Socialize', icon: '💭' },
-  { id: 'friends', label: 'Make Friends', icon: '👥' },
-  { id: 'network', label: 'Professionally Network', icon: '💼' },
+  { id: 'meetups', label: 'Join local meetups', icon: '📍' },
+  { id: 'friends', label: 'Find friends', icon: '👥' },
+  { id: 'hobbies', label: 'Share hobbies & activities', icon: '🎨' },
+  { id: 'socialize', label: 'Low-pressure socializing', icon: '💬' },
+  { id: 'network', label: 'Professional networking', icon: '💼' },
 ];
 
 export const interestOptions = [

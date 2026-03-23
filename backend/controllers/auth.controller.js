@@ -2,17 +2,79 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Address from '../models/Address.js';
 import env from '../config/env.js';
+import { geocodeAddress, buildFormattedAddress } from '../services/geocodeService.js';
 import { generateOtpCode, sendOtpEmail, sendPasswordResetEmail } from '../services/authService.js';
 import { uploadIfBase64, deleteImage as cloudinaryDelete } from '../services/cloudinaryService.js';
 
+function normAddressCompare(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*,\s*/g, ',')
+    .replace(/\s+/g, ' ')
+    .replace(/,\s*,/g, ',');
+}
+
+function savedAddressFullNormalized(a) {
+  if (a.formattedAddress && String(a.formattedAddress).trim()) {
+    return normAddressCompare(a.formattedAddress);
+  }
+  const parts = [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(
+    (p) => p && String(p).trim(),
+  );
+  return normAddressCompare(parts.join(', '));
+}
+
+function loginAddressMatchesSaved(saved, rawLine1, rawCity) {
+  const l1 = normAddressCompare(rawLine1);
+  const lc = normAddressCompare(rawCity);
+  const s1 = normAddressCompare(saved.line1);
+  const sc = normAddressCompare(saved.city);
+  if (l1 && lc && s1 && sc && l1 === s1 && lc === sc) return true;
+
+  const savedFull = savedAddressFullNormalized(saved);
+  const loginCombo = normAddressCompare([rawLine1, rawCity].filter(Boolean).join(', '));
+  const loginLine1Only = normAddressCompare(rawLine1);
+  if (savedFull && loginCombo && savedFull === loginCombo) return true;
+  if (savedFull && loginLine1Only && savedFull === loginLine1Only) return true;
+
+  const minLen = 28;
+  if (savedFull.length >= minLen && loginCombo.length >= minLen) {
+    if (savedFull.includes(loginCombo) || loginCombo.includes(savedFull)) return true;
+  }
+  if (savedFull.length >= minLen && loginLine1Only.length >= minLen) {
+    if (savedFull.includes(loginLine1Only) || loginLine1Only.includes(savedFull)) return true;
+  }
+  return false;
+}
+
 export async function signup(req, res) {
-  const { name, email, password, phoneNumber, whatsappNumber, birthdate } = req.body || {};
+  const { name, email, password, phoneNumber, whatsappNumber, birthdate, address } = req.body || {};
   const trimmedEmail = String(email).trim().toLowerCase();
 
   const existingUser = await User.findOne({ email: trimmedEmail });
   if (existingUser) {
     return res.status(400).json({ message: 'User already exists' });
+  }
+
+  const line1 = String(address?.line1 || '').trim();
+  const city = String(address?.city || '').trim();
+  const formatted = buildFormattedAddress({
+    line1,
+    line2: String(address?.line2 || '').trim(),
+    city,
+    state: String(address?.state || '').trim(),
+    postalCode: String(address?.postalCode || '').trim(),
+    country: String(address?.country || '').trim(),
+  });
+  const geocode = await geocodeAddress(formatted);
+  if (!geocode || typeof geocode.lat !== 'number' || typeof geocode.lng !== 'number') {
+    return res.status(400).json({
+      message:
+        'We could not verify that address on the map. Add a clearer street or area, city, and ideally postal code or country, then try again.',
+    });
   }
 
   const hashedPassword = await bcrypt.hash(String(password), 10);
@@ -28,12 +90,34 @@ export async function signup(req, res) {
   });
 
   await user.save();
+
+  try {
+    await Address.create({
+      owner_id: user._id,
+      type: 'user',
+      label: String(address?.label || 'Home').trim() || 'Home',
+      line1,
+      line2: String(address?.line2 || '').trim(),
+      city,
+      state: String(address?.state || '').trim(),
+      country: String(address?.country || '').trim(),
+      postalCode: String(address?.postalCode || '').trim(),
+      formattedAddress: formatted,
+      geocode,
+    });
+  } catch (err) {
+    await User.findByIdAndDelete(user._id);
+    console.error('[signup] address save failed:', err?.message || err);
+    return res.status(500).json({ message: 'Could not save your address. Please try again.' });
+  }
+
   return res.status(201).json({ message: 'User created successfully' });
 }
 
 export async function login(req, res) {
-  const { email, password, phoneNumber, whatsappNumber } = req.body || {};
+  const { email, password, phoneNumber, whatsappNumber, name } = req.body || {};
   const normalizedEmail = String(email || '').trim().toLowerCase();
+  const submittedPhone = String(phoneNumber || '').trim();
 
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
@@ -45,16 +129,39 @@ export async function login(req, res) {
     return res.status(400).json({ message: 'Invalid password' });
   }
 
-  if (!user.phoneNumber) {
-    if (!phoneNumber) {
-      return res.status(400).json({
-        message: 'Phone number is required for this account. Please add it and login again.',
-      });
+  if (name && String(name).trim() !== String(user.name || '').trim()) {
+    return res.status(400).json({ message: 'Full name does not match this account' });
+  }
+
+  if (!submittedPhone) {
+    return res.status(400).json({ message: 'Phone number is required' });
+  }
+
+  const norm = (p) => String(p || '').replace(/\s/g, '');
+  if (user.phoneNumber) {
+    if (norm(user.phoneNumber) !== norm(submittedPhone)) {
+      return res.status(400).json({ message: 'Phone number does not match this account' });
     }
-    user.phoneNumber = String(phoneNumber).trim();
+  } else {
+    user.phoneNumber = submittedPhone;
     user.whatsappNumber = whatsappNumber
       ? String(whatsappNumber).trim()
-      : String(phoneNumber).trim();
+      : submittedPhone;
+  }
+
+  const loginLine1 = String(req.body?.address?.line1 || '').trim();
+  const loginCity = String(req.body?.address?.city || '').trim();
+  if (loginLine1 && loginCity) {
+    const saved = await Address.find({ owner_id: user._id, type: 'user' }).lean();
+    const addressOk = saved.some((a) =>
+      loginAddressMatchesSaved(a, req.body.address.line1, req.body.address.city),
+    );
+    if (!addressOk) {
+      return res.status(400).json({
+        message:
+          'Address does not match a saved address on your account. Use the same line 1 and city as on your profile, or the same full address you saved.',
+      });
+    }
   }
 
   const otp = generateOtpCode();
@@ -174,7 +281,11 @@ export async function verifyOtp(req, res) {
 }
 
 export async function getProfile(req, res) {
-  return res.json(req.user);
+  const addresses = await Address.find({ owner_id: req.user._id, type: 'user' })
+    .sort({ createdAt: -1 })
+    .lean();
+  const userJson = req.user.toObject ? req.user.toObject() : req.user;
+  return res.json({ ...userJson, addresses });
 }
 
 export async function updateProfile(req, res) {

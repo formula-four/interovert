@@ -1,20 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, useScroll, useTransform, useSpring, useAnimation } from 'framer-motion';
-import { Menu, X, MapPin, ChevronLeft, ChevronRight, Download, QrCode, Users, Compass, Coffee, Music, Book, Headphones, Camera, LayoutDashboard } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Menu, X, LayoutDashboard, User } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../utils/session';
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
-  
-  const [email, setEmail] = useState("");
+  const userMenuRef = useRef(null);
 
-  const { scrollYProgress } = useScroll();
-  const yPosAnim = useSpring(useTransform(scrollYProgress, [0, 1], [0, 100]));
-
+  const [email, setEmail] = useState('');
 
   useEffect(() => {
     const updateProgress = () => {
@@ -37,6 +35,21 @@ function Navbar() {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const close = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    setUserMenuOpen(false);
+  }, [location.pathname]);
 
   const progressBarLeft = {
     width: `${scrollProgress / 2}%`,
@@ -101,18 +114,6 @@ function Navbar() {
                   Events
                 </motion.span>
               </Link>
-              {email && (
-                <Link to="/dashboard">
-                  <motion.span
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="inline-flex items-center gap-1.5 text-gray-700 hover:text-indigo-600 transition-colors"
-                  >
-                    <LayoutDashboard size={15} />
-                    Dashboard
-                  </motion.span>
-                </Link>
-              )}
               {['Features', 'Explore', 'Community', 'Blog'].map((item) => (
                 <motion.button
                   key={item}
@@ -126,16 +127,49 @@ function Navbar() {
                 </motion.button>
               ))}
               {email ? (
-                <Link to="/profile">
+                <div ref={userMenuRef} className="group relative pl-2">
                   <motion.button
+                    type="button"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    title={email}
-                    className="flex items-center justify-center w-10 h-10 text-lg font-semibold text-white bg-indigo-600 rounded-full transition-colors hover:bg-indigo-700"
+                    title="Account menu"
+                    aria-label="Open account menu"
+                    aria-expanded={userMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setUserMenuOpen((v) => !v)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-lg font-semibold text-white transition-colors hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                   >
                     {email.charAt(0).toUpperCase()}
                   </motion.button>
-                </Link>
+                  <div
+                    role="menu"
+                    aria-label="Account menu"
+                    className={`absolute right-0 top-full z-50 mt-2 min-w-[13rem] rounded-xl border border-gray-200 bg-white py-1.5 shadow-lg ring-1 ring-black/5 transition-all duration-150 ${
+                      userMenuOpen
+                        ? 'visible translate-y-0 opacity-100'
+                        : 'invisible -translate-y-1 opacity-0 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    <Link
+                      to="/dashboard"
+                      role="menuitem"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    >
+                      <LayoutDashboard className="h-4 w-4 text-indigo-600" aria-hidden />
+                      My dashboard
+                    </Link>
+                    <Link
+                      to="/profile"
+                      role="menuitem"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    >
+                      <User className="h-4 w-4 text-indigo-600" aria-hidden />
+                      My profile
+                    </Link>
+                  </div>
+                </div>
               ) : (
                 <>
                   <Link to="/login">
@@ -190,16 +224,6 @@ function Navbar() {
               >
                 Events
               </Link>
-              {email && (
-                <Link
-                  to="/dashboard"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="flex items-center gap-1.5 text-gray-700 hover:text-indigo-600 transition-colors"
-                >
-                  <LayoutDashboard size={15} />
-                  Dashboard
-                </Link>
-              )}
               {['Features', 'Explore', 'Community', 'Blog'].map((item) => (
                 <button
                   key={item}
@@ -210,28 +234,40 @@ function Navbar() {
                   {item}
                 </button>
               ))}
-              {
-                email ? (
-                  <Link to="/profile">
-                    <button title={email} className="flex items-center justify-center w-10 h-10 mx-auto text-lg font-semibold text-white bg-indigo-600 rounded-full transition-colors hover:bg-indigo-700">
-                      {email.charAt(0).toUpperCase()}
+              {email ? (
+                <div className="space-y-2 border-t border-gray-100 pt-4">
+                  <p className="text-center text-xs font-medium text-gray-500">Account</p>
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    My dashboard
+                  </Link>
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <User className="h-4 w-4" />
+                    My profile
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <Link to="/login">
+                    <button className="flex w-full items-center justify-center gap-2 rounded-full border border-indigo-600 px-4 py-2 text-indigo-600 transition-colors hover:bg-indigo-600 hover:text-white">
+                      Login
                     </button>
                   </Link>
-                ) : (
-                  <>
-                    <Link to="/login">
-                      <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-indigo-600 border border-indigo-600 rounded-full transition-colors hover:bg-indigo-600 hover:text-white">
-                        Login
-                      </button>
-                    </Link>
-                    <Link to="/signup">
-                      <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-full transition-colors hover:bg-indigo-700">
-                        Sign Up
-                      </button>
-                    </Link>
-                  </>
-                )
-              }
+                  <Link to="/signup">
+                    <button className="flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-white transition-colors hover:bg-indigo-700">
+                      Sign Up
+                    </button>
+                  </Link>
+                </>
+              )}
             </div>
           </motion.div>
         )}

@@ -28,9 +28,10 @@ export async function geocodeAddress(addressString) {
   if (!addressString || !addressString.trim()) return null;
 
   const parts = addressString.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
 
   try {
-    for (let i = 0; i < parts.length - 1; i++) {
+    for (let i = 0; i < parts.length; i++) {
       const query = parts.slice(i).join(', ');
       const result = await nominatimSearch(query);
       if (result) {

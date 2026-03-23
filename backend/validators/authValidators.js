@@ -3,7 +3,7 @@ function isEmail(value) {
 }
 
 export function validateSignup(req, res, next) {
-  const { name, email, password, phoneNumber } = req.body || {};
+  const { name, email, password, phoneNumber, address } = req.body || {};
   if (!name || !email || !password || !phoneNumber) {
     return res.status(400).json({
       message: 'Missing required fields',
@@ -13,13 +13,29 @@ export function validateSignup(req, res, next) {
   if (!isEmail(email)) {
     return res.status(400).json({ message: 'Invalid email format' });
   }
+  const line1 = String(address?.line1 || '').trim();
+  const city = String(address?.city || '').trim();
+  if (!line1 || !city) {
+    return res.status(400).json({
+      message: 'Address is required: provide address line 1 and city',
+    });
+  }
   next();
 }
 
 export function validateLogin(req, res, next) {
-  const { email, password } = req.body || {};
+  const { email, password, phoneNumber, name, address } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
+  }
+  if (!phoneNumber || !String(phoneNumber).trim()) {
+    return res.status(400).json({ message: 'Phone number is required' });
+  }
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ message: 'Full name is required' });
+  }
+  if (!String(address?.line1 || '').trim() || !String(address?.city || '').trim()) {
+    return res.status(400).json({ message: 'Address line 1 and city are required' });
   }
   next();
 }

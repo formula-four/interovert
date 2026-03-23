@@ -1,6 +1,10 @@
 import Event            from '../models/Event.js';
 import EventParticipant from '../models/EventParticipant.js';
 
+function isCountedParticipant(p) {
+  return p.paymentStatus !== 'pending' && p.paymentStatus !== 'failed';
+}
+
 /**
  * GET /api/dashboard/stats
  * Returns KPI summary + per-event breakdown for the logged-in host.
@@ -21,7 +25,7 @@ export async function getDashboardStats(req, res) {
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const totalEvents       = events.length;
-  const totalParticipants = participants.filter((p) => p.paymentStatus !== 'pending' && p.paymentStatus !== 'failed').length;
+  const totalParticipants = participants.filter(isCountedParticipant).length;
   const totalRevenue      = participants
     .filter((p) => p.paymentStatus === 'paid')
     .reduce((sum, p) => sum + (p.amountPaid || 0), 0);
@@ -35,6 +39,8 @@ export async function getDashboardStats(req, res) {
     const failed  = ep.filter((p) => p.paymentStatus === 'failed');
     const revenue = paid.reduce((s, p) => s + (p.amountPaid || 0), 0);
 
+    const participantCount = ep.filter(isCountedParticipant).length;
+
     return {
       _id:              event._id,
       name:             event.name,
@@ -43,7 +49,7 @@ export async function getDashboardStats(req, res) {
       category:         event.category,
       ticketPrice:      event.ticketPrice || 0,
       maxAttendees:     event.maxAttendees,
-      participantCount: paid.length + free.length,
+      participantCount,
       paidCount:        paid.length,
       freeCount:        free.length,
       pendingCount:     pending.length,

@@ -29,6 +29,12 @@ export async function createAddress(req, res) {
 
   const formatted = buildFormattedAddress({ line1, line2, city, state, postalCode, country });
   const geocode = await geocodeAddress(formatted);
+  if (!geocode || typeof geocode.lat !== 'number' || typeof geocode.lng !== 'number') {
+    return res.status(400).json({
+      message:
+        'Could not verify that address on the map. Refine street, city, and add postal code or country if needed.',
+    });
+  }
 
   const address = await Address.create({
     owner_id: req.user._id,
@@ -72,7 +78,14 @@ export async function updateAddress(req, res) {
   }
 
   updated.formattedAddress = buildFormattedAddress(updated);
-  updated.geocode = await geocodeAddress(updated.formattedAddress);
+  const nextGeocode = await geocodeAddress(updated.formattedAddress);
+  if (!nextGeocode || typeof nextGeocode.lat !== 'number' || typeof nextGeocode.lng !== 'number') {
+    return res.status(400).json({
+      message:
+        'Could not verify the updated address on the map. Check line 1, city, and region details.',
+    });
+  }
+  updated.geocode = nextGeocode;
 
   Object.assign(address, updated);
   await address.save();
