@@ -24,18 +24,15 @@ export function validateSignup(req, res, next) {
 }
 
 export function validateLogin(req, res, next) {
-  const { email, password, phoneNumber, name, address } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required' });
+  const { email, phoneNumber } = req.body || {};
+  if (!email || !String(email).trim()) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+  if (!isEmail(email)) {
+    return res.status(400).json({ message: 'Invalid email format' });
   }
   if (!phoneNumber || !String(phoneNumber).trim()) {
     return res.status(400).json({ message: 'Phone number is required' });
-  }
-  if (!name || !String(name).trim()) {
-    return res.status(400).json({ message: 'Full name is required' });
-  }
-  if (!String(address?.line1 || '').trim() || !String(address?.city || '').trim()) {
-    return res.status(400).json({ message: 'Address line 1 and city are required' });
   }
   next();
 }

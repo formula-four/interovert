@@ -8,48 +8,6 @@ import { geocodeAddress, buildFormattedAddress } from '../services/geocodeServic
 import { generateOtpCode, sendOtpEmail, sendPasswordResetEmail } from '../services/authService.js';
 import { uploadIfBase64, deleteImage as cloudinaryDelete } from '../services/cloudinaryService.js';
 
-function normAddressCompare(s) {
-  return String(s || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s*,\s*/g, ',')
-    .replace(/\s+/g, ' ')
-    .replace(/,\s*,/g, ',');
-}
-
-function savedAddressFullNormalized(a) {
-  if (a.formattedAddress && String(a.formattedAddress).trim()) {
-    return normAddressCompare(a.formattedAddress);
-  }
-  const parts = [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(
-    (p) => p && String(p).trim(),
-  );
-  return normAddressCompare(parts.join(', '));
-}
-
-function loginAddressMatchesSaved(saved, rawLine1, rawCity) {
-  const l1 = normAddressCompare(rawLine1);
-  const lc = normAddressCompare(rawCity);
-  const s1 = normAddressCompare(saved.line1);
-  const sc = normAddressCompare(saved.city);
-  if (l1 && lc && s1 && sc && l1 === s1 && lc === sc) return true;
-
-  const savedFull = savedAddressFullNormalized(saved);
-  const loginCombo = normAddressCompare([rawLine1, rawCity].filter(Boolean).join(', '));
-  const loginLine1Only = normAddressCompare(rawLine1);
-  if (savedFull && loginCombo && savedFull === loginCombo) return true;
-  if (savedFull && loginLine1Only && savedFull === loginLine1Only) return true;
-
-  const minLen = 28;
-  if (savedFull.length >= minLen && loginCombo.length >= minLen) {
-    if (savedFull.includes(loginCombo) || loginCombo.includes(savedFull)) return true;
-  }
-  if (savedFull.length >= minLen && loginLine1Only.length >= minLen) {
-    if (savedFull.includes(loginLine1Only) || loginLine1Only.includes(savedFull)) return true;
-  }
-  return false;
-}
-
 export async function signup(req, res) {
   const { name, email, password, phoneNumber, whatsappNumber, birthdate, address } = req.body || {};
   const trimmedEmail = String(email).trim().toLowerCase();
@@ -115,26 +73,13 @@ export async function signup(req, res) {
 }
 
 export async function login(req, res) {
-  const { email, password, phoneNumber, whatsappNumber, name } = req.body || {};
+  const { email, phoneNumber, whatsappNumber } = req.body || {};
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const submittedPhone = String(phoneNumber || '').trim();
 
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
     return res.status(400).json({ message: 'User not found' });
-  }
-
-  const validPassword = await bcrypt.compare(String(password || ''), user.password);
-  if (!validPassword) {
-    return res.status(400).json({ message: 'Invalid password' });
-  }
-
-  if (name && String(name).trim() !== String(user.name || '').trim()) {
-    return res.status(400).json({ message: 'Full name does not match this account' });
-  }
-
-  if (!submittedPhone) {
-    return res.status(400).json({ message: 'Phone number is required' });
   }
 
   const norm = (p) => String(p || '').replace(/\s/g, '');
@@ -147,21 +92,6 @@ export async function login(req, res) {
     user.whatsappNumber = whatsappNumber
       ? String(whatsappNumber).trim()
       : submittedPhone;
-  }
-
-  const loginLine1 = String(req.body?.address?.line1 || '').trim();
-  const loginCity = String(req.body?.address?.city || '').trim();
-  if (loginLine1 && loginCity) {
-    const saved = await Address.find({ owner_id: user._id, type: 'user' }).lean();
-    const addressOk = saved.some((a) =>
-      loginAddressMatchesSaved(a, req.body.address.line1, req.body.address.city),
-    );
-    if (!addressOk) {
-      return res.status(400).json({
-        message:
-          'Address does not match a saved address on your account. Use the same line 1 and city as on your profile, or the same full address you saved.',
-      });
-    }
   }
 
   const otp = generateOtpCode();
