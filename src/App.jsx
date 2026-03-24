@@ -17,33 +17,21 @@ import ChatBot from './components/Chatbot';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './components/Dashboard';
 import { Toaster } from 'react-hot-toast';
+import ScrollToTop from './components/ScrollToTop';
 
 function App() {
   return (
     <>
       <Toaster position="top-right" />
       <Router>
+        <ScrollToTop />
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
-            <Route
-              path="/events"
-              element={
-                <ProtectedRoute>
-                  <Events />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/events" element={<Events />} />
             <Route path="/profile" element={<Profile />} />
 
-            <Route
-              path="/event/:id"
-              element={
-                <ProtectedRoute>
-                  <PerEvent />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/event/:id" element={<PerEvent />} />
           <Route path="/chatbot" element={<ChatBot />} />
             <Route
               path="/dashboard"

@@ -3,11 +3,11 @@ function isEmail(value) {
 }
 
 export function validateSignup(req, res, next) {
-  const { name, email, password, phoneNumber, address } = req.body || {};
-  if (!name || !email || !password || !phoneNumber) {
+  const { name, email, password, address } = req.body || {};
+  if (!name || !email || !password) {
     return res.status(400).json({
       message: 'Missing required fields',
-      required: ['name', 'email', 'password', 'phoneNumber'],
+      required: ['name', 'email', 'password'],
     });
   }
   if (!isEmail(email)) {
@@ -24,7 +24,7 @@ export function validateSignup(req, res, next) {
 }
 
 export function validateLogin(req, res, next) {
-  const { email, password, phoneNumber } = req.body || {};
+  const { email, password } = req.body || {};
   if (!email || !String(email).trim()) {
     return res.status(400).json({ message: 'Email is required' });
   }
@@ -33,9 +33,6 @@ export function validateLogin(req, res, next) {
   }
   if (!password || !String(password).length) {
     return res.status(400).json({ message: 'Password is required' });
-  }
-  if (!phoneNumber || !String(phoneNumber).trim()) {
-    return res.status(400).json({ message: 'Phone number is required' });
   }
   next();
 }

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, UserPlus, User, Lock, Mail, Calendar, Phone, MapPin } from 'lucide-react'
+import { Eye, EyeOff, UserPlus, User, Lock, Mail, Calendar, MapPin } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import d1 from '../assets/images/b3.jpg'
 import { toast } from 'react-hot-toast'
@@ -17,8 +17,6 @@ export default function Signup() {
     email: '',
     password: '',
     birthdate: '',
-    phoneNumber: '',
-    whatsappNumber: '',
     address: {
       label: 'Home',
       line1: '',
@@ -54,8 +52,6 @@ export default function Signup() {
         email: formData.email.trim(),
         password: formData.password,
         birthdate: formData.birthdate || undefined,
-        phoneNumber: formData.phoneNumber.trim(),
-        whatsappNumber: formData.whatsappNumber.trim() || undefined,
         address: {
           label: formData.address.label.trim() || 'Home',
           line1: formData.address.line1.trim(),
@@ -170,43 +166,6 @@ export default function Signup() {
               autoComplete="bday"
               className="w-full rounded-lg border border-transparent bg-gray-800 py-2 pl-10 pr-4 text-white focus:border-transparent focus:ring-2 focus:ring-indigo-600"
               value={formData.birthdate}
-              onChange={handleInputChange}
-            />
-          </div>
-        </div>
-        <div>
-          <label htmlFor="phoneNumber" className="mb-2 block text-sm font-medium text-gray-300">
-            Phone number <span className="text-rose-400">*</span>
-          </label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" aria-hidden />
-            <input
-              id="phoneNumber"
-              name="phoneNumber"
-              type="tel"
-              required
-              autoComplete="tel"
-              className="w-full rounded-lg border border-transparent bg-gray-800 py-2 pl-10 pr-4 text-white focus:border-transparent focus:ring-2 focus:ring-indigo-600"
-              placeholder="+91XXXXXXXXXX"
-              value={formData.phoneNumber}
-              onChange={handleInputChange}
-            />
-          </div>
-        </div>
-        <div>
-          <label htmlFor="whatsappNumber" className="mb-2 block text-sm font-medium text-gray-300">
-            WhatsApp number <span className="text-zinc-500">(optional)</span>
-          </label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" aria-hidden />
-            <input
-              id="whatsappNumber"
-              name="whatsappNumber"
-              type="tel"
-              autoComplete="tel"
-              className="w-full rounded-lg border border-transparent bg-gray-800 py-2 pl-10 pr-4 text-white focus:border-transparent focus:ring-2 focus:ring-indigo-600"
-              placeholder="Leave blank to use phone number"
-              value={formData.whatsappNumber}
               onChange={handleInputChange}
             />
           </div>

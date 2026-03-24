@@ -3,8 +3,15 @@ import { motion } from 'framer-motion';
 import { Calendar, MapPin, Users, ArrowUpRight, Repeat2, Ticket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getDisplayEventPhotoUrl } from '../../../utils/eventImage';
+import { getAuthToken } from '../../../utils/session';
 
-export default function EventCard({ event, index = 0 }) {
+export default function EventCard({ event, index = 0, onGuestClick }) {
+  const guard = (e) => {
+    if (!getAuthToken()) {
+      e.preventDefault();
+      onGuestClick?.();
+    }
+  };
   const photoSrc = getDisplayEventPhotoUrl(event.photo, 900) || '/placeholder.svg?height=200&width=400';
   const dateStr = new Date(event.datetime).toLocaleDateString(undefined, {
     month: 'short',
@@ -21,6 +28,7 @@ export default function EventCard({ event, index = 0 }) {
     >
       <Link
         to={`/event/${event._id}`}
+        onClick={guard}
         className="relative block aspect-[16/10] shrink-0 overflow-hidden bg-zinc-950"
       >
         <img
@@ -84,6 +92,7 @@ export default function EventCard({ event, index = 0 }) {
         <p className="line-clamp-2 flex-1 text-sm leading-relaxed text-zinc-500">{event.description}</p>
         <Link
           to={`/event/${event._id}`}
+          onClick={guard}
           className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/30 transition hover:from-indigo-500 hover:to-violet-500"
         >
           View event

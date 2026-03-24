@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Sparkles, Compass } from 'lucide-react'
-import { getCurrentUser } from '../utils/session'
+import { getCurrentUser, getAuthToken } from '../utils/session'
+import { useAuthGate } from '../context/AuthGateContext'
 import { toast } from 'react-hot-toast'
 import apiClient from '../services/apiClient'
 import { getSocket } from '../utils/socket'
@@ -14,6 +15,7 @@ import CreateEventModal from '../features/events/components/CreateEventModal'
 import RecommendedEvents from '../features/events/components/RecommendedEvents'
 
 export default function Events() {
+  const { promptAuth } = useAuthGate()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -138,7 +140,13 @@ export default function Events() {
             type="button"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              if (!getAuthToken()) {
+                promptAuth()
+                return
+              }
+              setIsModalOpen(true)
+            }}
             className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:from-indigo-500 hover:to-violet-500 sm:self-auto"
           >
             <Plus className="h-5 w-5" strokeWidth={2.5} />
@@ -184,7 +192,13 @@ export default function Events() {
             </p>
             <button
               type="button"
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                if (!getAuthToken()) {
+                  promptAuth()
+                  return
+                }
+                setIsModalOpen(true)
+              }}
               className="mt-8 rounded-xl bg-zinc-800 px-5 py-2.5 text-sm font-medium text-white ring-1 ring-zinc-600 transition hover:bg-zinc-700"
             >
               Create the first event
@@ -194,7 +208,7 @@ export default function Events() {
           <ul className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
             {events.map((event, i) => (
               <li key={event._id}>
-                <EventCard event={event} index={i} />
+                <EventCard event={event} index={i} onGuestClick={promptAuth} />
               </li>
             ))}
           </ul>

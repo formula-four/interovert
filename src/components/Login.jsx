@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LogIn, Phone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import d1 from '../assets/images/b3.jpg'
 import { toast } from 'react-hot-toast'
@@ -17,7 +17,6 @@ export default function Login() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    phoneNumber: '',
   })
   const [showOTP, setShowOTP] = useState(false)
   const [userEmail, setUserEmail] = useState('')
@@ -41,7 +40,6 @@ export default function Login() {
       const { data } = await apiClient.post('/api/login', {
         email: formData.email.trim(),
         password: formData.password,
-        phoneNumber: formData.phoneNumber.trim(),
       })
 
       if (data?.devOtp) {
@@ -133,27 +131,8 @@ export default function Login() {
             </Link>
           </div>
         </div>
-        <div>
-          <label htmlFor="phoneNumber" className="mb-2 block text-sm font-medium text-gray-300">
-            Phone number <span className="text-rose-400">*</span>
-          </label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" aria-hidden />
-            <input
-              id="phoneNumber"
-              name="phoneNumber"
-              type="tel"
-              required
-              autoComplete="tel"
-              className="w-full rounded-lg border border-transparent bg-gray-800 py-2 pl-10 pr-4 text-white focus:border-transparent focus:ring-2 focus:ring-indigo-600"
-              placeholder="+91XXXXXXXXXX"
-              value={formData.phoneNumber}
-              onChange={handleInputChange}
-            />
-          </div>
-        </div>
         <p className="text-xs text-gray-500">
-          After email, password, and phone check, we&apos;ll email you a one-time code to finish signing in.
+          We&apos;ll email you a one-time code to finish signing in.
         </p>
         <div>
           <motion.button

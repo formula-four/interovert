@@ -4,8 +4,8 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  phoneNumber: { type: String, required: true },
-  whatsappNumber: { type: String },
+  phoneNumber: { type: String, trim: true, default: '' },
+  whatsappNumber: { type: String, trim: true, default: '' },
   dateOfBirth: { type: Date },
   profile: {
     avatar: { type: String, default: null },

@@ -5,6 +5,7 @@ import Navbar from './Navbar'
 import { Outlet, useLocation } from 'react-router-dom'
 import Footer from './Footer'
 import ChatBot from './Chatbot'
+import { AuthGateProvider } from '../context/AuthGateContext'
 
 function Layout() {
   const [aiOpen, setAiOpen] = useState(false)
@@ -18,7 +19,9 @@ function Layout() {
   return (
     <>
       <Navbar />
-      <Outlet />
+      <AuthGateProvider>
+        <Outlet />
+      </AuthGateProvider>
       <Footer />
 
       {showAiFab && (

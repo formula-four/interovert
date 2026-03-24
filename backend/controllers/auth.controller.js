@@ -36,13 +36,15 @@ export async function signup(req, res) {
   }
 
   const hashedPassword = await bcrypt.hash(String(password), 10);
-  const normalizedWhatsapp = whatsappNumber ? String(whatsappNumber).trim() : String(phoneNumber).trim();
+  const phone = String(phoneNumber || '').trim();
+  const wa = String(whatsappNumber || '').trim();
+  const normalizedWhatsapp = wa || phone;
 
   const user = new User({
     name: String(name).trim(),
     email: trimmedEmail,
     password: hashedPassword,
-    phoneNumber: String(phoneNumber).trim(),
+    phoneNumber: phone,
     whatsappNumber: normalizedWhatsapp,
     dateOfBirth: birthdate ? new Date(birthdate) : undefined,
   });
@@ -73,9 +75,8 @@ export async function signup(req, res) {
 }
 
 export async function login(req, res) {
-  const { email, password, phoneNumber, whatsappNumber } = req.body || {};
+  const { email, password } = req.body || {};
   const normalizedEmail = String(email || '').trim().toLowerCase();
-  const submittedPhone = String(phoneNumber || '').trim();
 
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
@@ -85,18 +86,6 @@ export async function login(req, res) {
   const validPassword = await bcrypt.compare(String(password || ''), user.password);
   if (!validPassword) {
     return res.status(400).json({ message: 'Invalid password' });
-  }
-
-  const norm = (p) => String(p || '').replace(/\s/g, '');
-  if (user.phoneNumber) {
-    if (norm(user.phoneNumber) !== norm(submittedPhone)) {
-      return res.status(400).json({ message: 'Phone number does not match this account' });
-    }
-  } else {
-    user.phoneNumber = submittedPhone;
-    user.whatsappNumber = whatsappNumber
-      ? String(whatsappNumber).trim()
-      : submittedPhone;
   }
 
   const otp = generateOtpCode();

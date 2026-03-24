@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { getAuthToken, getCurrentUser } from '../utils/session'
+import AuthRequiredModal from './AuthRequiredModal'
 import apiClient from '../services/apiClient'
 
 const CATEGORY_STYLES = {
@@ -388,6 +389,10 @@ export default function PerEvent() {
     let cancelled = false
 
     async function loadPage() {
+      if (!getAuthToken()) {
+        setPageLoading(false)
+        return
+      }
       setPageLoading(true)
       setLoadError(false)
       try {
@@ -708,6 +713,14 @@ export default function PerEvent() {
     } finally {
       setIsSubmittingRating(false)
     }
+  }
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-zinc-950">
+        <AuthRequiredModal open onClose={() => navigate('/events')} />
+      </div>
+    )
   }
 
   if (pageLoading) return <PageSkeleton />
