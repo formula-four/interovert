@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   profile: {
     avatar: { type: String, default: null },
+    gender: { type: String, enum: ['', 'male', 'female'], default: '' },
     lookingFor: { type: [String], default: [] },
     interests: { type: [String], default: [] },
     customInterests: { type: [String], default: [] },

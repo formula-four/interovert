@@ -2,13 +2,29 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Camera, Trash2, MapPin, Save, ArrowLeft, Pencil, Loader2, LogOut, Mail, Phone, User } from 'lucide-react'
+import {
+  Plus,
+  Camera,
+  Trash2,
+  MapPin,
+  Save,
+  ArrowLeft,
+  Pencil,
+  Loader2,
+  LogOut,
+  Mail,
+  Phone,
+  User,
+  CalendarDays,
+  Users,
+  Sparkles,
+  UserCircle2,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { clearSession, getAuthToken, getCurrentUser, setSession } from '../utils/session'
 import { disconnectSocket } from '../utils/socket'
 import apiClient from '../services/apiClient'
-import { lookingForOptions } from '../features/profile/constants'
 import AddressFormModal from './AddressFormModal'
 
 /** Open Google Maps for a saved address (coordinates preferred, else text search). */
@@ -24,6 +40,51 @@ function buildAddressMapHref(addr) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}`
 }
 
+function normAvatar(v) {
+  if (v == null || v === '') return null
+  return v
+}
+
+function lookingForKey(arr) {
+  return [...(arr || [])].map(String).sort().join('|')
+}
+
+function normName(v) {
+  return String(v ?? '').trim()
+}
+
+function normEmail(v) {
+  return String(v ?? '').trim().toLowerCase()
+}
+
+function normPhone(v) {
+  return String(v ?? '').trim()
+}
+
+function StatBlock({ value, label, sublabel, icon: Icon }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 border-l border-zinc-800/80 py-1 pl-3 text-center first:border-l-0 first:pl-0 sm:pl-4">
+      <Icon className="mx-auto h-4 w-4 text-indigo-400/90 sm:hidden" aria-hidden />
+      <p className="text-lg font-bold tabular-nums text-white sm:text-xl">{value}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:text-[11px]">{label}</p>
+      {sublabel ? <p className="hidden text-[10px] text-zinc-600 sm:block">{sublabel}</p> : null}
+    </div>
+  )
+}
+
+/** One horizontal row: label (+ icon) left, content right — not used for Events / Meetups / Friends stats. */
+function DetailRow({ icon: Icon, label, iconWrapClass, children }) {
+  return (
+    <div className="flex flex-col gap-2 border-b border-zinc-800/50 py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-6 sm:py-3">
+      <div className={`flex shrink-0 items-center gap-2.5 sm:w-36 sm:shrink-0 lg:w-40 ${iconWrapClass || ''}`}>
+        {Icon ? <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden /> : null}
+        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">{label}</span>
+      </div>
+      <div className="min-w-0 flex-1 sm:text-left">{children}</div>
+    </div>
+  )
+}
+
 export default function Profile() {
   const navigate = useNavigate()
   const [profileData, setProfileData] = useState({
@@ -31,7 +92,14 @@ export default function Profile() {
     email: '',
     phone: '',
     avatar: null,
+    gender: '',
     lookingFor: [],
+  })
+
+  const [stats, setStats] = useState({
+    eventsJoined: 0,
+    pastMeetups: 0,
+    connections: 0,
   })
 
   const fileInputRef = useRef(null)
@@ -41,6 +109,9 @@ export default function Profile() {
   const [addresses, setAddresses] = useState([])
   const [showAddressModal, setShowAddressModal] = useState(false)
   const [editingAddress, setEditingAddress] = useState(null)
+
+  /** Last saved / loaded profile fields that PUT /api/profile persists — used to enable Save only when dirty. */
+  const [savedSnapshot, setSavedSnapshot] = useState(null)
 
   useEffect(() => {
     const token = getAuthToken()
@@ -63,14 +134,33 @@ export default function Profile() {
     const loadProfile = async () => {
       try {
         const { data } = await apiClient.get('/api/profile')
-        setProfileData((prev) => ({
-          ...prev,
-          name: data.name || prev.name,
-          email: data.email || prev.email,
-          phone: data.phoneNumber || prev.phone,
-          avatar: data.profile?.avatar ?? prev.avatar,
-          lookingFor: data.profile?.lookingFor ?? prev.lookingFor,
-        }))
+        setProfileData((prev) => {
+          const next = {
+            ...prev,
+            name: data.name || prev.name,
+            email: data.email || prev.email,
+            phone: data.phoneNumber || prev.phone,
+            avatar: data.profile?.avatar ?? prev.avatar,
+            gender: data.profile?.gender ?? prev.gender ?? '',
+            lookingFor: data.profile?.lookingFor ?? prev.lookingFor,
+          }
+          setSavedSnapshot({
+            name: normName(next.name),
+            email: normEmail(next.email),
+            phone: normPhone(next.phone),
+            avatar: normAvatar(next.avatar),
+            gender: next.gender,
+            lookingForStr: lookingForKey(next.lookingFor),
+          })
+          return next
+        })
+        if (data.stats) {
+          setStats({
+            eventsJoined: data.stats.eventsJoined ?? 0,
+            pastMeetups: data.stats.pastMeetups ?? 0,
+            connections: data.stats.connections ?? 0,
+          })
+        }
         if (Array.isArray(data.addresses)) {
           setAddresses(data.addresses)
         } else {
@@ -140,13 +230,8 @@ export default function Profile() {
     }
   }
 
-  const toggleLookingFor = (option) => {
-    setProfileData((prev) => ({
-      ...prev,
-      lookingFor: prev.lookingFor.includes(option.id)
-        ? prev.lookingFor.filter((id) => id !== option.id)
-        : [...prev.lookingFor, option.id],
-    }))
+  const setGender = (value) => {
+    setProfileData((prev) => ({ ...prev, gender: value }))
   }
 
   const handleSave = async () => {
@@ -156,11 +241,25 @@ export default function Profile() {
       return
     }
 
+    if (!normName(profileData.name)) {
+      toast.error('Please enter your name')
+      return
+    }
+    const emailNorm = normEmail(profileData.email)
+    if (!emailNorm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      toast.error('Please enter a valid email')
+      return
+    }
+
     setIsSaving(true)
     try {
       const { data } = await apiClient.put('/api/profile', {
+        name: normName(profileData.name),
+        email: emailNorm,
+        phoneNumber: normPhone(profileData.phone),
         profile: {
           avatar: profileData.avatar,
+          gender: profileData.gender,
           lookingFor: profileData.lookingFor,
         },
       })
@@ -177,14 +276,40 @@ export default function Profile() {
         },
       })
 
+      const nextAvatar = data.profile?.avatar ?? profileData.avatar
+      const nextGender = data.profile?.gender ?? profileData.gender
+      const nextLf = data.profile?.lookingFor ?? profileData.lookingFor
+
       setProfileData((prev) => ({
         ...prev,
         name: data.name || prev.name,
         email: data.email || prev.email,
-        phone: data.phoneNumber || prev.phone,
-        avatar: data.profile?.avatar ?? prev.avatar,
-        lookingFor: data.profile?.lookingFor ?? prev.lookingFor,
+        phone: data.phoneNumber ?? prev.phone,
+        avatar: nextAvatar,
+        gender: nextGender,
+        lookingFor: nextLf,
       }))
+      setSavedSnapshot({
+        name: normName(data.name),
+        email: normEmail(data.email),
+        phone: normPhone(data.phoneNumber),
+        avatar: normAvatar(nextAvatar),
+        gender: nextGender,
+        lookingForStr: lookingForKey(nextLf),
+      })
+
+      try {
+        const { data: fresh } = await apiClient.get('/api/profile')
+        if (fresh.stats) {
+          setStats({
+            eventsJoined: fresh.stats.eventsJoined ?? 0,
+            pastMeetups: fresh.stats.pastMeetups ?? 0,
+            connections: fresh.stats.connections ?? 0,
+          })
+        }
+      } catch {
+        /* stats refresh optional */
+      }
 
       toast.success('Profile saved')
     } catch (error) {
@@ -201,58 +326,82 @@ export default function Profile() {
     navigate('/login')
   }
 
-  const inputReadonly =
-    'w-full rounded-xl border border-zinc-700/60 bg-zinc-950/50 px-3 py-2.5 text-left text-sm text-zinc-200 cursor-not-allowed'
+  const inputEditable =
+    'w-full rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-3 py-2.5 text-left text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30'
+
+  const hasUnsavedChanges =
+    savedSnapshot !== null &&
+    (normName(profileData.name) !== savedSnapshot.name ||
+      normEmail(profileData.email) !== savedSnapshot.email ||
+      normPhone(profileData.phone) !== savedSnapshot.phone ||
+      normAvatar(profileData.avatar) !== savedSnapshot.avatar ||
+      profileData.gender !== savedSnapshot.gender ||
+      lookingForKey(profileData.lookingFor) !== savedSnapshot.lookingForStr)
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-zinc-950 pt-24 text-zinc-100 sm:pt-28">
+    <div className="relative min-h-screen overflow-x-hidden bg-zinc-950 pt-20 text-zinc-100 sm:pt-24">
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.12),transparent_50%)]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_40%,rgba(139,92,246,0.06),transparent_45%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_60%_at_50%_-10%,rgba(99,102,241,0.14),transparent_55%)]"
         aria-hidden
       />
 
-      <div className="relative mx-auto max-w-3xl px-4 pb-24 pt-2 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-4xl px-3 pb-28 sm:px-6 lg:px-8">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-zinc-500 transition hover:text-white"
+          className="mb-3 inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-400 backdrop-blur transition hover:border-zinc-700 hover:text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </button>
 
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
+        <motion.article
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/50 shadow-2xl ring-1 ring-white/[0.04] backdrop-blur-sm"
+          className="overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-900/40 shadow-2xl ring-1 ring-white/[0.06] backdrop-blur-md"
         >
-          <div className="border-b border-zinc-800/80 bg-gradient-to-r from-zinc-900/90 to-zinc-950/90 px-6 py-8 sm:px-8">
-            <div className="flex flex-col items-center justify-center">
-              <div className="relative shrink-0">
-                <div
-                  className="absolute inset-0 -m-2 rounded-full bg-gradient-to-tr from-indigo-500/20 to-violet-500/10 blur-xl"
-                  aria-hidden
-                />
-                <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 ring-2 ring-zinc-700/80 sm:h-32 sm:w-32">
-                  {profileData.avatar && !avatarBroken ? (
-                    <img
-                      src={profileData.avatar}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      onError={() => setAvatarBroken(true)}
-                    />
-                  ) : (
-                    <span className="text-3xl font-semibold text-indigo-200 sm:text-4xl">
-                      {profileData.name ? profileData.name.charAt(0).toUpperCase() : '?'}
-                    </span>
-                  )}
-                </div>
-                <label className="absolute bottom-0 right-0 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg ring-2 ring-zinc-900 transition hover:from-indigo-500 hover:to-violet-500">
-                  <Camera className="h-4 w-4" />
+          {/* Cover — social-style header */}
+          <div className="relative h-36 overflow-hidden sm:h-44">
+            <div
+              className="absolute inset-0 bg-gradient-to-br from-indigo-600/90 via-violet-700/70 to-zinc-900"
+              aria-hidden
+            />
+            <div
+              className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M0%200h60v60H0z%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2230%22%20r%3D%221.5%22%20fill%3D%22rgba%28255%2C255%2C255%2C0.06%29%22%2F%3E%3C%2Fsvg%3E')] opacity-60"
+              aria-hidden
+            />
+            <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between sm:left-8 sm:right-8">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">Profile</p>
+            </div>
+          </div>
+
+          <div className="relative px-4 pb-6 pt-0 sm:px-8">
+            {/* Avatar + headline row (Instagram / Facebook style) */}
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-10">
+              <div className="-mt-16 flex justify-center sm:justify-start sm:-mt-20">
+                <div className="relative shrink-0">
+                  <div className="relative flex h-[7.5rem] w-[7.5rem] items-center justify-center overflow-hidden rounded-full border-4 border-zinc-900 bg-zinc-900 shadow-xl ring-1 ring-zinc-700/50 sm:h-[8.5rem] sm:w-[8.5rem]">
+                    {profileData.avatar && !avatarBroken ? (
+                      <img
+                        src={profileData.avatar}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarBroken(true)}
+                      />
+                    ) : (
+                      <span className="text-4xl font-semibold text-indigo-200 sm:text-5xl">
+                        {profileData.name ? profileData.name.charAt(0).toUpperCase() : '?'}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg ring-4 ring-zinc-900 transition hover:bg-indigo-500"
+                    aria-label="Change profile photo"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </button>
                   <input
                     type="file"
                     accept="image/*"
@@ -260,73 +409,102 @@ export default function Profile() {
                     className="hidden"
                     ref={fileInputRef}
                   />
-                </label>
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-4 pt-2 sm:pt-4">
+                <div className="text-center sm:text-left">
+                  <h1 className="truncate text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                    {profileData.name || 'Your name'}
+                  </h1>
+                </div>
+
+                {/* Stats row — like posts / followers / following */}
+                <div className="flex justify-center rounded-2xl border border-zinc-800/80 bg-zinc-950/50 px-2 py-3 sm:justify-start sm:px-4">
+                  <StatBlock
+                    value={stats.eventsJoined}
+                    label="Events"
+                    sublabel="Joined"
+                    icon={CalendarDays}
+                  />
+                  <StatBlock
+                    value={stats.pastMeetups}
+                    label="Meetups"
+                    sublabel="Past events"
+                    icon={Sparkles}
+                  />
+                  <StatBlock
+                    value={stats.connections}
+                    label="Friends"
+                    sublabel="People at same events"
+                    icon={Users}
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-0 divide-y divide-zinc-800/80">
-            <section className="px-6 py-6 sm:px-8">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Contact</h2>
-              <p className="mt-1 text-sm text-zinc-600">From your account — update via support if something is wrong.</p>
-              <div className="mt-5 space-y-4">
-                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
-                  <User className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Name</p>
-                    <input type="text" value={profileData.name} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
-                  </div>
+            {/* Row-wise details (horizontal label | value); stats above stay as-is */}
+            <div className="mt-8 rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-1 sm:px-6">
+              <DetailRow icon={User} label="Name" iconWrapClass="text-indigo-300">
+                <input
+                  type="text"
+                  autoComplete="name"
+                  value={profileData.name}
+                  onChange={(e) => setProfileData((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Your name"
+                  className={`${inputEditable} w-full max-w-full sm:max-w-none`}
+                />
+              </DetailRow>
+              <DetailRow icon={Mail} label="Email" iconWrapClass="text-violet-300">
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={profileData.email}
+                  onChange={(e) => setProfileData((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="you@example.com"
+                  className={`${inputEditable} w-full max-w-full break-all sm:max-w-none`}
+                />
+              </DetailRow>
+              <DetailRow icon={Phone} label="Phone" iconWrapClass="text-emerald-300">
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  value={profileData.phone}
+                  onChange={(e) => setProfileData((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="Phone number"
+                  className={`${inputEditable} w-full max-w-full sm:max-w-none`}
+                />
+              </DetailRow>
+              <DetailRow icon={UserCircle2} label="Identity" iconWrapClass="text-fuchsia-300">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: '', label: 'Prefer not to say' },
+                    { id: 'male', label: 'Male' },
+                    { id: 'female', label: 'Female' },
+                  ].map((opt) => {
+                    const active = profileData.gender === opt.id
+                    return (
+                      <button
+                        key={opt.id || 'unset'}
+                        type="button"
+                        onClick={() => setGender(opt.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${
+                          active
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40 ring-1 ring-indigo-400/30'
+                            : 'border border-zinc-700/80 bg-zinc-900/80 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
                 </div>
-                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
-                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Email</p>
-                    <input type="email" value={profileData.email} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
-                  </div>
-                </div>
-                <div className="flex gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-3">
-                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Phone</p>
-                    <input type="tel" value={profileData.phone} readOnly disabled className={`${inputReadonly} mt-1 border-0 bg-transparent p-0`} />
-                  </div>
-                </div>
-              </div>
-            </section>
+              </DetailRow>
+            </div>
 
-            <section className="px-6 py-6 sm:px-8">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">What you&apos;re here for</h2>
-              <p className="mt-1 text-sm text-zinc-600">
-                Meetups, friends, hobbies — we use this to suggest events and people you might click with.
-              </p>
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {lookingForOptions.map((option) => {
-                  const on = profileData.lookingFor.includes(option.id)
-                  return (
-                    <motion.button
-                      key={option.id}
-                      type="button"
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => toggleLookingFor(option)}
-                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
-                        on
-                          ? 'border-indigo-500/45 bg-indigo-500/10 text-indigo-100 ring-1 ring-indigo-500/20'
-                          : 'border-zinc-800/80 bg-zinc-950/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="text-lg" aria-hidden>
-                        {option.icon}
-                      </span>
-                      {option.label}
-                    </motion.button>
-                  )
-                })}
-              </div>
-            </section>
-
-            <section className="px-6 py-6 sm:px-8">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Address — card list (original style) */}
+            <section className="mt-8">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   <MapPin className="h-4 w-4 text-indigo-400" />
                   Your addresses
@@ -350,8 +528,8 @@ export default function Profile() {
                 <div className="mt-4 space-y-2 rounded-xl border border-dashed border-zinc-800/80 bg-zinc-950/30 py-8 px-4 text-center text-sm text-zinc-600">
                   <p>No addresses on your profile yet.</p>
                   <p className="text-xs text-zinc-500">
-                    If you signed up before map verification, use &quot;Add address&quot; with a full street and city so we can confirm it on the map.
-                    New signups store the address from registration here automatically.
+                    If you signed up before map verification, use &quot;Add address&quot; with a full street and city so we can
+                    confirm it on the map. New signups store the address from registration here automatically.
                   </p>
                 </div>
               ) : (
@@ -414,29 +592,30 @@ export default function Profile() {
               )}
             </section>
 
-            <div className="flex flex-col-reverse gap-3 px-6 py-6 sm:flex-row sm:justify-end sm:px-8">
+            <div className="mt-10 flex flex-col-reverse gap-3 border-t border-zinc-800/80 pt-8 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={handleLogout}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/50 px-6 py-3 text-sm font-semibold text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-zinc-700/80 bg-zinc-950/50 px-6 py-3 text-sm font-semibold text-zinc-400 transition hover:border-zinc-600 hover:text-white"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
               </button>
               <motion.button
                 type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={hasUnsavedChanges && !isSaving ? { scale: 1.02 } : undefined}
+                whileTap={hasUnsavedChanges && !isSaving ? { scale: 0.98 } : undefined}
                 onClick={handleSave}
-                disabled={isSaving}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/35 disabled:opacity-60"
+                disabled={isSaving || !hasUnsavedChanges}
+                title={!hasUnsavedChanges && !isSaving ? 'Change your details, then save' : undefined}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-10 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/35 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {isSaving ? 'Saving…' : 'Save changes'}
               </motion.button>
             </div>
           </div>
-        </motion.div>
+        </motion.article>
       </div>
 
       <AddressFormModal
