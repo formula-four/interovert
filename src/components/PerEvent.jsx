@@ -29,6 +29,7 @@ import { toast } from 'react-hot-toast'
 import { getAuthToken, getCurrentUser } from '../utils/session'
 import AuthRequiredModal from './AuthRequiredModal'
 import apiClient from '../services/apiClient'
+import { PageSkeleton } from './ui/Skeleton'
 
 const CATEGORY_STYLES = {
   Adventure: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/30',
@@ -81,21 +82,6 @@ function SectionCard({ title, subtitle, children, delay = 0 }) {
   )
 }
 
-function PageSkeleton() {
-  return (
-    <div className="min-h-screen animate-pulse bg-zinc-950">
-      <div className="mb-10 mt-16 h-[min(55vh,420px)] bg-zinc-800 pt-24 sm:mb-14 sm:mt-20 sm:pt-28" />
-      <div className="mx-auto max-w-6xl space-y-6 px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="h-48 rounded-2xl bg-zinc-900 ring-1 ring-zinc-800" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="h-64 rounded-2xl bg-zinc-900 ring-1 ring-zinc-800 lg:col-span-2" />
-          <div className="h-64 rounded-2xl bg-zinc-900 ring-1 ring-zinc-800" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function formatEventRange(iso) {
   const d = new Date(iso)
   return {
@@ -132,7 +118,7 @@ function avatarColor(name = '') {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
-function ParticipantsTable({ participants, onExport }) {
+function ParticipantsTable({ participants, onExport, exporting }) {
   const [search, setSearch] = React.useState('')
 
   const filtered = React.useMemo(() => {
@@ -189,10 +175,15 @@ function ParticipantsTable({ participants, onExport }) {
           <button
             type="button"
             onClick={onExport}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-white ring-1 ring-zinc-700 transition hover:bg-zinc-700"
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-white ring-1 ring-zinc-700 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Download className="h-3.5 w-3.5" />
-            Export CSV
+            {exporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
         </div>
       </div>
@@ -336,6 +327,10 @@ export default function PerEvent() {
   const [ratingReview, setRatingReview] = useState('')
   const [eventEnded, setEventEnded] = useState(false)
   const [isSubmittingRating, setIsSubmittingRating] = useState(false)
+  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false)
+  const [isWhatsAppLoading, setIsWhatsAppLoading] = useState(false)
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const currentUser = getCurrentUser()
   const token = getAuthToken()
@@ -555,17 +550,21 @@ export default function PerEvent() {
 
   const handleDeleteEvent = async () => {
     if (!token) return
+    setIsDeletingEvent(true)
     try {
       await apiClient.delete(`/api/events/${id}`)
       toast.success('Event deleted')
       navigate('/events')
     } catch (error) {
       toast.error(error.response?.data?.message || 'Delete failed')
+    } finally {
+      setIsDeletingEvent(false)
     }
   }
 
   const handleExportParticipants = async () => {
     if (!token) return
+    setIsExporting(true)
     try {
       const response = await fetch(`${apiClient.defaults.baseURL}/api/events/${id}/participants/export`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -580,11 +579,14 @@ export default function PerEvent() {
       window.URL.revokeObjectURL(url)
     } catch {
       toast.error('Could not export participants')
+    } finally {
+      setIsExporting(false)
     }
   }
 
   const handleCreateWhatsappGroup = async () => {
     if (!token) return
+    setIsWhatsAppLoading(true)
     try {
       const { data } = await apiClient.post(`/api/events/${id}/whatsapp-group/create`, {})
       toast.success(data?.message || 'WhatsApp group creation triggered')
@@ -602,6 +604,8 @@ export default function PerEvent() {
       } else {
         toast.error(apiMessage || 'Could not create WhatsApp group')
       }
+    } finally {
+      setIsWhatsAppLoading(false)
     }
   }
 
@@ -640,6 +644,7 @@ export default function PerEvent() {
       toast.error('Please login first')
       return
     }
+    setIsFavoriteLoading(true)
     try {
       const { data } = await apiClient.post(`/api/events/${id}/favorite`, {})
       setIsFavorited(!!data.isFavorited)
@@ -647,6 +652,8 @@ export default function PerEvent() {
       toast.success(data.message || 'Updated favorites')
     } catch (error) {
       toast.error(error.response?.data?.message || 'Could not update favorite')
+    } finally {
+      setIsFavoriteLoading(false)
     }
   }
 
@@ -1010,15 +1017,20 @@ export default function PerEvent() {
                     <button
                       type="button"
                       onClick={handleToggleFavorite}
-                      className={`inline-flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition ${
+                      disabled={isFavoriteLoading}
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         isFavorited
                           ? 'border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/20'
                           : 'border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800'
                       }`}
                       title={isFavorited ? 'Remove from favorites' : 'Save'}
                     >
-                      <Heart className="h-4 w-4" fill={isFavorited ? 'currentColor' : 'none'} aria-hidden />
-                      {isFavorited ? 'Saved' : 'Save'}
+                      {isFavoriteLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Heart className="h-4 w-4" fill={isFavorited ? 'currentColor' : 'none'} aria-hidden />
+                      )}
+                      {isFavoriteLoading ? 'Saving…' : isFavorited ? 'Saved' : 'Save'}
                     </button>
                   </div>
 
@@ -1041,16 +1053,24 @@ export default function PerEvent() {
                     <button
                       type="button"
                       onClick={handleCreateWhatsappGroup}
-                      className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                      disabled={isWhatsAppLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      WhatsApp group
+                      {isWhatsAppLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : null}
+                      {isWhatsAppLoading ? 'Creating…' : 'WhatsApp group'}
                     </button>
                     <button
                       type="button"
                       onClick={handleDeleteEvent}
-                      className="rounded-lg border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-200 transition hover:bg-red-500/15"
+                      disabled={isDeletingEvent}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Delete event
+                      {isDeletingEvent ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : null}
+                      {isDeletingEvent ? 'Deleting…' : 'Delete event'}
                     </button>
                   </div>
                 </motion.div>
@@ -1063,6 +1083,7 @@ export default function PerEvent() {
           <ParticipantsTable
             participants={participants}
             onExport={handleExportParticipants}
+            exporting={isExporting}
           />
         )}
 

@@ -14,6 +14,7 @@ import {
   Repeat2,
   Ticket,
   IndianRupee,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import apiClient from '../../../services/apiClient';
@@ -79,6 +80,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -122,6 +124,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
       addressPayload = { ...newAddress };
     }
 
+    setIsSubmitting(true);
     try {
       await apiClient.post('/api/events', {
         ...eventData,
@@ -137,6 +140,8 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
       onClose();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error in creating event');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -744,10 +749,21 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
               <footer className="shrink-0 border-t border-zinc-800/90 bg-zinc-950/90 px-6 py-4 backdrop-blur-md">
                 <button
                   type="submit"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-violet-500 to-fuchsia-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-950/40 transition-[transform,box-shadow] hover:from-violet-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-violet-900/50 active:scale-[0.99]"
+                  disabled={isSubmitting}
+                  aria-busy={isSubmitting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-violet-500 to-fuchsia-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-950/40 transition-[transform,box-shadow] hover:from-violet-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-violet-900/50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  Publish event
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Publishing…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Publish event
+                    </>
+                  )}
                 </button>
               </footer>
             </form>

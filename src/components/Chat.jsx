@@ -5,6 +5,7 @@ import { MessageCircle, Users } from 'lucide-react';
 import EventChatPanel from './EventChatPanel';
 import apiClient from '../services/apiClient';
 import { getSocket } from '../utils/socket';
+import { ChatListSkeleton } from './ui/Skeleton';
 
 function chatRowLabel(chat) {
   if (chat.type === 'DIRECT') {
@@ -136,7 +137,18 @@ const Chat = () => {
         </div>
 
         {isLoading && !chats.length ? (
-          <div className="rounded-xl bg-gray-800 p-6">Loading chats…</div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+            <aside className="w-full shrink-0 overflow-hidden rounded-xl border border-gray-700 bg-gray-800/80 lg:w-72">
+              <div className="border-b border-gray-700 p-3">
+                <h2 className="text-sm font-semibold text-gray-200">Conversations</h2>
+                <p className="text-xs text-gray-500">Group + direct threads for this event</p>
+              </div>
+              <ChatListSkeleton rows={6} tone="gray" />
+            </aside>
+            <div className="min-h-[320px] flex-1 rounded-xl border border-gray-700 bg-gray-800/50 p-6 text-gray-500">
+              Loading…
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <aside className="w-full shrink-0 rounded-xl border border-gray-700 bg-gray-800/80 lg:w-72">

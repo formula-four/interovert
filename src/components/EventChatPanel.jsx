@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useEventChat } from '../hooks/useEventChat';
 import { toast } from 'react-hot-toast';
 
@@ -124,11 +125,19 @@ export default function EventChatPanel({ eventId, chatId, chatTitle }) {
           disabled={isSending}
         />
         <button
-          className="rounded-lg bg-indigo-600 px-4 py-2 font-medium hover:bg-indigo-500 disabled:opacity-50"
+          className="inline-flex min-w-[5.5rem] items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium hover:bg-indigo-500 disabled:opacity-50"
           type="submit"
           disabled={isSending || !draft.trim()}
+          aria-busy={isSending}
         >
-          {isSending ? '…' : 'Send'}
+          {isSending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Send
+            </>
+          ) : (
+            'Send'
+          )}
         </button>
       </form>
     </div>

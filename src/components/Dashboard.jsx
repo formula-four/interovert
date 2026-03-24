@@ -30,6 +30,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import apiClient from '../services/apiClient'
 import { getDisplayEventPhotoUrl } from '../utils/eventImage'
+import { DashboardPageSkeleton, ParticipantsTableSkeleton } from './ui/Skeleton'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -218,9 +219,7 @@ function ParticipantsDrawer({ eventId, eventName, ticketPrice, onClose }) {
         {/* Table */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-            </div>
+            <ParticipantsTableSkeleton rows={8} />
           ) : filtered.length === 0 ? (
             <p className="py-16 text-center text-sm text-zinc-500">
               {search ? `No results for "${search}"` : 'No participants yet.'}
@@ -384,12 +383,16 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-950 pt-28">
+      <div className="relative min-h-screen overflow-hidden bg-zinc-950 pt-28 text-zinc-100">
         <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.15),transparent_50%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.18),transparent_50%)]"
           aria-hidden
         />
-        <Loader2 className="relative h-9 w-9 animate-spin text-indigo-400" aria-label="Loading" />
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_40%,rgba(139,92,246,0.09),transparent_45%)]"
+          aria-hidden
+        />
+        <DashboardPageSkeleton />
       </div>
     )
   }
