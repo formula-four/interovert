@@ -17,7 +17,7 @@ import webhookRoutes from './routes/webhooks.js';
 import { getUserRoom, setIO } from './services/socketService.js';
 import communityRoutes   from './routes/community.js';
 import dashboardRoutes  from './routes/dashboard.js';
-import { getPgPool, hasPostgresConfig } from './config/pg.js';
+import { getPgPool, hasPostgresConfig, markPgUnhealthy } from './config/pg.js';
 import { registerCommunitySocketHandlers } from './services/communitySocket.js';
 import { ensureIndex as ensureElasticIndex } from './services/elasticService.js';
 import { ensureSignalsIndex } from './services/recommendationService.js';
@@ -91,6 +91,7 @@ if (hasPostgresConfig()) {
     .catch((err) => {
       console.error('PostgreSQL connection error:', err.message);
       console.warn('Community features (PostgreSQL) will be unavailable.');
+      markPgUnhealthy();
     });
 }
 
