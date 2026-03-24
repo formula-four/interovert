@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { MessageCircle, Users } from 'lucide-react';
 import EventChatPanel from './EventChatPanel';
 import apiClient from '../services/apiClient';
+import { getSocket } from '../utils/socket';
 
 function chatRowLabel(chat) {
   if (chat.type === 'DIRECT') {
@@ -54,21 +55,54 @@ const Chat = () => {
     loadChats();
   }, [loadChats]);
 
+  // ── Real-time sidebar update via global socket ────────────────────────────
+  // When any message:new arrives for this event, bump the unread badge on
+  // the correct chat row — no full reload needed.
   useEffect(() => {
-    const t = setInterval(() => loadChats(), 40000);
-    return () => clearInterval(t);
-  }, [loadChats]);
+    if (!eventId) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onMessageNew = (message) => {
+      const incomingChatId = String(message.chat_id ?? '');
+      if (!incomingChatId) return;
+
+      // If the incoming message is for the currently open chat, don't badge it
+      if (String(chatId) === incomingChatId) return;
+
+      setChats((prev) =>
+        prev.map((c) =>
+          String(c.id) === incomingChatId
+            ? {
+                ...c,
+                unreadCount: (Number(c.unreadCount) || 0) + 1,
+                lastSenderName: message.sender_name || message.senderName || c.lastSenderName,
+                lastMessagePreview: message.content
+                  ? String(message.content).slice(0, 60)
+                  : c.lastMessagePreview,
+              }
+            : c
+        )
+      );
+      setTotalUnread((n) => n + 1);
+    };
+
+    socket.on('message:new', onMessageNew);
+    return () => socket.off('message:new', onMessageNew);
+  }, [eventId, chatId]);
 
   const selectChat = (id) => {
+    // Clear unread badge for the chat we're switching to
+    setChats((prev) =>
+      prev.map((c) => (String(c.id) === String(id) ? { ...c, unreadCount: 0 } : c))
+    );
+    setTotalUnread((prev) => {
+      const leaving = chats.find((c) => String(c.id) === String(id));
+      return Math.max(0, prev - (Number(leaving?.unreadCount) || 0));
+    });
     setChatId(id);
     navigate(`/chat?eventId=${eventId}&chatId=${id}`, { replace: true });
   };
-
-  useEffect(() => {
-    if (!chatId) return undefined;
-    const t = setTimeout(() => loadChats(), 900);
-    return () => clearTimeout(t);
-  }, [chatId, loadChats]);
 
   const activeChat = chats.find((c) => String(c.id) === String(chatId));
   const panelTitle = activeChat ? chatRowLabel(activeChat) : 'Chat';

@@ -1,8 +1,11 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Address from '../models/Address.js';
+import Event from '../models/Event.js';
+import EventParticipant from '../models/EventParticipant.js';
 import env from '../config/env.js';
 import { geocodeAddress, buildFormattedAddress } from '../services/geocodeService.js';
 import { generateOtpCode, sendOtpEmail, sendPasswordResetEmail } from '../services/authService.js';
@@ -204,17 +207,98 @@ export async function verifyOtp(req, res) {
   });
 }
 
+function countedParticipantFilter(userId) {
+  return {
+    participant_id: userId,
+    paymentStatus: { $nin: ['pending', 'failed'] },
+  };
+}
+
+async function getProfileActivityStats(userId) {
+  const filter = countedParticipantFilter(userId);
+  const eventColl = Event.collection.collectionName;
+
+  const [eventsJoined, pastMeetupsAgg, myParts] = await Promise.all([
+    EventParticipant.countDocuments(filter),
+    EventParticipant.aggregate([
+      { $match: filter },
+      { $lookup: { from: eventColl, localField: 'event_id', foreignField: '_id', as: 'ev' } },
+      { $unwind: '$ev' },
+      { $match: { 'ev.datetime': { $lt: new Date() } } },
+      { $count: 'c' },
+    ]),
+    EventParticipant.find(filter).select('event_id').lean(),
+  ]);
+
+  const eventIdStrs = [...new Set(myParts.map((p) => String(p.event_id)))];
+  let connections = 0;
+  if (eventIdStrs.length > 0) {
+    const eventObjectIds = eventIdStrs.map((id) => new mongoose.Types.ObjectId(id));
+    const others = await EventParticipant.distinct('participant_id', {
+      event_id: { $in: eventObjectIds },
+      participant_id: { $ne: userId },
+    });
+    connections = others.length;
+  }
+
+  return {
+    eventsJoined,
+    pastMeetups: pastMeetupsAgg[0]?.c ?? 0,
+    connections,
+  };
+}
+
 export async function getProfile(req, res) {
   const addresses = await Address.find({ owner_id: req.user._id, type: 'user' })
     .sort({ createdAt: -1 })
     .lean();
   const userJson = req.user.toObject ? req.user.toObject() : req.user;
-  return res.json({ ...userJson, addresses });
+  const stats = await getProfileActivityStats(req.user._id);
+  return res.json({ ...userJson, addresses, stats });
 }
 
 export async function updateProfile(req, res) {
   const payload = req.body || {};
   const incomingProfile = payload.profile || {};
+
+  const topUpdates = {};
+
+  if (payload.name !== undefined) {
+    const name = String(payload.name ?? '').trim();
+    if (!name) {
+      return res.status(400).json({ message: 'Name cannot be empty' });
+    }
+    topUpdates.name = name;
+  }
+
+  if (payload.email !== undefined) {
+    const email = String(payload.email ?? '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ message: 'Email cannot be empty' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Invalid email address' });
+    }
+    if (email !== req.user.email) {
+      const taken = await User.findOne({ email, _id: { $ne: req.user._id } })
+        .select('_id')
+        .lean();
+      if (taken) {
+        return res.status(400).json({ message: 'That email is already in use' });
+      }
+    }
+    topUpdates.email = email;
+  }
+
+  if (payload.phoneNumber !== undefined) {
+    const newPhone = String(payload.phoneNumber ?? '').trim();
+    topUpdates.phoneNumber = newPhone;
+    const oldPhone = String(req.user.phoneNumber ?? '').trim();
+    const oldWa = String(req.user.whatsappNumber ?? '').trim();
+    if (!oldWa || oldWa === oldPhone) {
+      topUpdates.whatsappNumber = newPhone;
+    }
+  }
 
   let avatar = incomingProfile.avatar ?? req.user.profile?.avatar ?? null;
   if (incomingProfile.avatar && incomingProfile.avatar.startsWith('data:')) {
@@ -225,9 +309,17 @@ export async function updateProfile(req, res) {
     }
   }
 
+  let gender = req.user.profile?.gender ?? '';
+  if (incomingProfile.gender !== undefined) {
+    const rawGender = String(incomingProfile.gender ?? '').trim().toLowerCase();
+    gender = ['male', 'female', ''].includes(rawGender) ? rawGender : gender;
+  }
+
   const updates = {
+    ...topUpdates,
     profile: {
       avatar,
+      gender,
       lookingFor: Array.isArray(incomingProfile.lookingFor) ? incomingProfile.lookingFor : req.user.profile?.lookingFor ?? [],
       interests: Array.isArray(incomingProfile.interests) ? incomingProfile.interests : req.user.profile?.interests ?? [],
       customInterests: Array.isArray(incomingProfile.customInterests) ? incomingProfile.customInterests : req.user.profile?.customInterests ?? [],
