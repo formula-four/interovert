@@ -1,26 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Search, MapPin, Loader2, X } from 'lucide-react'
-
-/**
- * Parses a Nominatim result's `address` block into our form fields.
- */
-function parseNominatim(result) {
-  const a = result.address || {}
-  const line1 =
-    [a.house_number, a.road].filter(Boolean).join(' ') ||
-    a.neighbourhood ||
-    a.suburb ||
-    ''
-  const city =
-    a.city || a.town || a.village || a.municipality || a.county || ''
-  return {
-    line1,
-    city,
-    state:      a.state       || '',
-    country:    a.country     || '',
-    postalCode: a.postcode    || '',
-  }
-}
+import { parseNominatimResult } from '../utils/nominatimAddress'
 
 /**
  * AddressAutocomplete
@@ -85,7 +65,7 @@ export default function AddressAutocomplete({ onSelect, placeholder = 'Search ad
   const handleSelect = (result) => {
     setQuery(result.display_name)
     setOpen(false)
-    onSelect(parseNominatim(result))
+    onSelect(parseNominatimResult(result))
   }
 
   const handleClear = () => {

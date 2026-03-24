@@ -5,7 +5,12 @@ import { toast } from 'react-hot-toast';
 import { setSession } from '../utils/session';
 import apiClient from '../services/apiClient';
 
-export default function OTPVerification({ email, onVerificationComplete }) {
+export default function OTPVerification({
+  email,
+  onVerificationComplete,
+  title,
+  subtitle,
+}) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes
   const [isVerifying, setIsVerifying] = useState(false);
@@ -93,9 +98,11 @@ export default function OTPVerification({ email, onVerificationComplete }) {
         animate={{ scale: 1, opacity: 1 }}
         className="bg-white rounded-lg p-8 max-w-md w-full"
       >
-        <h2 className="text-2xl font-bold text-center mb-6">Enter Verification Code</h2>
+        <h2 className="text-2xl font-bold text-center mb-6">
+          {title || 'Enter Verification Code'}
+        </h2>
         <p className="text-gray-600 text-center mb-6">
-          We've sent a code to {email}
+          {subtitle ?? `We've sent a code to ${email}`}
         </p>
         
         <form

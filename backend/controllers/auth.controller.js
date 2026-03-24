@@ -74,7 +74,27 @@ export async function signup(req, res) {
     return res.status(500).json({ message: 'Could not save your address. Please try again.' });
   }
 
-  return res.status(201).json({ message: 'User created successfully' });
+  const otp = generateOtpCode();
+  user.otp = otp;
+  user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+  await user.save();
+
+  const sent = await sendOtpEmail(trimmedEmail, otp, { purpose: 'signup' });
+  if (!sent) {
+    if (env.nodeEnv !== 'production') {
+      return res.status(201).json({
+        message: 'Account created. OTP email failed in development — use the code below.',
+        devOtp: otp,
+      });
+    }
+    await Address.deleteMany({ owner_id: user._id });
+    await User.findByIdAndDelete(user._id);
+    return res.status(503).json({ message: 'Could not send OTP email. Please try again.' });
+  }
+
+  return res.status(201).json({
+    message: 'Account created. Enter the verification code we emailed you.',
+  });
 }
 
 export async function login(req, res) {

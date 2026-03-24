@@ -11,7 +11,7 @@ const RESET_HTML = (resetUrl) => `
   <p style="color:#666;font-size:14px;">This link expires in 1 hour. If you did not request this, you can ignore this email.</p>
 `;
 
-async function sendViaNodemailer(email, otp) {
+async function sendViaNodemailer(email, otp, { purpose = 'login' } = {}) {
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
@@ -23,22 +23,28 @@ async function sendViaNodemailer(email, otp) {
     },
   });
 
+  const fromName = purpose === 'signup' ? 'Introvert - Sign up' : 'Introvert - Login OTP';
+  const subject = purpose === 'signup' ? 'Introvert – Sign up verification' : 'LOGIN OTP';
+
   await transporter.sendMail({
-    from: { name: 'Introvert - Login OTP', address: env.emailUser },
+    from: { name: fromName, address: env.emailUser },
     to: email,
-    subject: 'LOGIN OTP',
+    subject,
     html: OTP_HTML(otp),
   });
 }
 
-export async function sendOtpEmail(email, otp) {
+export async function sendOtpEmail(email, otp, options = {}) {
+  const purpose = options.purpose === 'signup' ? 'signup' : 'login';
+  const subject = purpose === 'signup' ? 'Introvert – Sign up verification' : 'Introvert – Login OTP';
+
   if (env.resendApiKey) {
     try {
       const resend = new Resend(env.resendApiKey);
       const { error } = await resend.emails.send({
         from: env.emailFrom,
         to: email,
-        subject: 'Introvert – Login OTP',
+        subject,
         html: OTP_HTML(otp),
       });
       if (!error) return true;
@@ -49,7 +55,7 @@ export async function sendOtpEmail(email, otp) {
   }
 
   try {
-    await sendViaNodemailer(email, otp);
+    await sendViaNodemailer(email, otp, { purpose });
     return true;
   } catch (error) {
     console.error('Nodemailer send failed:', error.message);
