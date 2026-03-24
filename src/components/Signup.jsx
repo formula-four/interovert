@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, UserPlus, User, Lock, Mail, Calendar, MapPin } from 'lucide-react'
+import { Eye, EyeOff, UserPlus, User, Lock, Mail, Calendar, MapPin, Loader2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import d1 from '../assets/images/b3.jpg'
 import { toast } from 'react-hot-toast'
@@ -272,16 +272,17 @@ export default function Signup() {
             whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={isLoading}
-            className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+            aria-busy={isLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
           >
             {isLoading ? (
-              <span className="flex items-center gap-2">
-                <span className="animate-pulse">⌛</span>
+              <>
+                <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
                 Processing…
-              </span>
+              </>
             ) : (
               <>
-                <UserPlus className="mr-2 inline" size={20} />
+                <UserPlus className="h-5 w-5 shrink-0" aria-hidden />
                 Sign up
               </>
             )}

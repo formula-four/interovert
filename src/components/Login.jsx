@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { LogIn, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import d1 from '../assets/images/b3.jpg'
 import { toast } from 'react-hot-toast'
@@ -140,10 +140,20 @@ export default function Login() {
             whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={isLoading}
-            className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+            aria-busy={isLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
           >
-            <LogIn className="mr-2" size={20} />
-            {isLoading ? 'Sending code…' : 'Continue'}
+            {isLoading ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
+                Sending code…
+              </>
+            ) : (
+              <>
+                <LogIn className="h-5 w-5 shrink-0" aria-hidden />
+                Continue
+              </>
+            )}
           </motion.button>
         </div>
       </form>

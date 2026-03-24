@@ -26,6 +26,7 @@ import { clearSession, getAuthToken, getCurrentUser, setSession } from '../utils
 import { disconnectSocket } from '../utils/socket'
 import apiClient from '../services/apiClient'
 import AddressFormModal from './AddressFormModal'
+import { ProfilePageSkeleton } from './ui/Skeleton'
 
 /** Open Google Maps for a saved address (coordinates preferred, else text search). */
 function buildAddressMapHref(addr) {
@@ -112,12 +113,15 @@ export default function Profile() {
 
   /** Last saved / loaded profile fields that PUT /api/profile persists — used to enable Save only when dirty. */
   const [savedSnapshot, setSavedSnapshot] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [deletingAddressId, setDeletingAddressId] = useState(null)
 
   useEffect(() => {
     const token = getAuthToken()
     const currentUser = getCurrentUser()
 
     if (!token) {
+      setProfileLoading(false)
       navigate('/login')
       return
     }
@@ -132,6 +136,7 @@ export default function Profile() {
     }
 
     const loadProfile = async () => {
+      setProfileLoading(true)
       try {
         const { data } = await apiClient.get('/api/profile')
         setProfileData((prev) => {
@@ -184,6 +189,8 @@ export default function Profile() {
         })
       } catch {
         toast.error('Could not load profile from server')
+      } finally {
+        setProfileLoading(false)
       }
     }
 
@@ -207,12 +214,15 @@ export default function Profile() {
   }
 
   const handleDeleteAddress = async (addressId) => {
+    setDeletingAddressId(addressId)
     try {
       await apiClient.delete(`/api/addresses/${addressId}`)
       setAddresses((prev) => prev.filter((a) => a._id !== addressId))
       toast.success('Address deleted')
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete address')
+    } finally {
+      setDeletingAddressId(null)
     }
   }
 
@@ -337,6 +347,10 @@ export default function Profile() {
       normAvatar(profileData.avatar) !== savedSnapshot.avatar ||
       profileData.gender !== savedSnapshot.gender ||
       lookingForKey(profileData.lookingFor) !== savedSnapshot.lookingForStr)
+
+  if (profileLoading) {
+    return <ProfilePageSkeleton />
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-zinc-950 pt-20 text-zinc-100 sm:pt-24">
@@ -575,15 +589,20 @@ export default function Profile() {
                         </button>
                         <button
                           type="button"
+                          disabled={deletingAddressId === addr._id}
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
                             handleDeleteAddress(addr._id)
                           }}
-                          className="rounded-xl p-2 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+                          className="rounded-xl p-2 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-50"
                           aria-label="Delete address"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          {deletingAddressId === addr._id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-rose-400" aria-hidden />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </li>

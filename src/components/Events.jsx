@@ -13,6 +13,7 @@ import EventFilters from '../features/events/components/EventFilters'
 import EventCard from '../features/events/components/EventCard'
 import CreateEventModal from '../features/events/components/CreateEventModal'
 import RecommendedEvents from '../features/events/components/RecommendedEvents'
+import { EventGridSkeleton } from './ui/Skeleton'
 
 export default function Events() {
   const { promptAuth } = useAuthGate()
@@ -22,6 +23,8 @@ export default function Events() {
   const [sortBy, setSortBy] = useState('date')
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
   const [events, setEvents] = useState([])
+  const [eventsInitialLoading, setEventsInitialLoading] = useState(true)
+  const eventsFirstLoadDoneRef = useRef(false)
 
   // Geo / Near Me state
   const [nearMe, setNearMe] = useState(false)
@@ -67,6 +70,11 @@ export default function Events() {
       setEvents(data.events ?? data)
     } catch {
       toast.error('Failed to load events')
+    } finally {
+      if (!eventsFirstLoadDoneRef.current) {
+        eventsFirstLoadDoneRef.current = true
+        setEventsInitialLoading(false)
+      }
     }
   }, [])
 
@@ -177,7 +185,9 @@ export default function Events() {
           currentUser={currentUser}
         />
 
-        {events.length === 0 ? (
+        {eventsInitialLoading ? (
+          <EventGridSkeleton count={6} />
+        ) : events.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

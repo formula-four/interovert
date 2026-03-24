@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react'
+import { Lock, Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import apiClient from '../services/apiClient'
 import AuthShell from '../features/auth/AuthShell'
@@ -136,9 +136,17 @@ export default function ResetPassword() {
             whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={isLoading}
-            className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            aria-busy={isLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
           >
-            {isLoading ? 'Saving…' : 'Update password'}
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                Saving…
+              </>
+            ) : (
+              'Update password'
+            )}
           </motion.button>
         </form>
       )}

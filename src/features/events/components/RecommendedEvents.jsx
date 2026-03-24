@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import apiClient from '../../../services/apiClient';
 import { getAuthToken } from '../../../utils/session';
 import { getDisplayEventPhotoUrl } from '../../../utils/eventImage';
+import { RecommendedEventsSkeleton } from '../../../components/ui/Skeleton';
 
 /**
  * RecommendedEvents
@@ -38,8 +39,11 @@ export default function RecommendedEvents() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Don't render the section at all when there's nothing to show
-  if (loading || events.length === 0) return null;
+  if (loading) {
+    return getAuthToken() ? <RecommendedEventsSkeleton /> : null;
+  }
+
+  if (events.length === 0) return null;
 
   const scroll = (direction) => {
     const el = scrollRef.current;
