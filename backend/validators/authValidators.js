@@ -24,12 +24,15 @@ export function validateSignup(req, res, next) {
 }
 
 export function validateLogin(req, res, next) {
-  const { email, phoneNumber } = req.body || {};
+  const { email, password, phoneNumber } = req.body || {};
   if (!email || !String(email).trim()) {
     return res.status(400).json({ message: 'Email is required' });
   }
   if (!isEmail(email)) {
     return res.status(400).json({ message: 'Invalid email format' });
+  }
+  if (!password || !String(password).length) {
+    return res.status(400).json({ message: 'Password is required' });
   }
   if (!phoneNumber || !String(phoneNumber).trim()) {
     return res.status(400).json({ message: 'Phone number is required' });

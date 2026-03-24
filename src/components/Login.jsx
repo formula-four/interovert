@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LogIn, Phone, Mail } from 'lucide-react'
+import { LogIn, Phone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import d1 from '../assets/images/b3.jpg'
 import { toast } from 'react-hot-toast'
@@ -13,8 +13,10 @@ import AuthShell from '../features/auth/AuthShell'
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
+    password: '',
     phoneNumber: '',
   })
   const [showOTP, setShowOTP] = useState(false)
@@ -38,6 +40,7 @@ export default function Login() {
     try {
       const { data } = await apiClient.post('/api/login', {
         email: formData.email.trim(),
+        password: formData.password,
         phoneNumber: formData.phoneNumber.trim(),
       })
 
@@ -99,6 +102,38 @@ export default function Login() {
           </div>
         </div>
         <div>
+          <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-300">
+            Password <span className="text-rose-400">*</span>
+          </label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" aria-hidden />
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              required
+              autoComplete="current-password"
+              className="w-full rounded-lg border border-transparent bg-gray-800 py-2 pl-10 pr-10 text-white focus:border-transparent focus:ring-2 focus:ring-indigo-600"
+              placeholder="Enter your password"
+              value={formData.password}
+              onChange={handleInputChange}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+          <div className="mt-1.5 text-right text-sm">
+            <Link to="/forgot-password" className="font-medium text-indigo-400 hover:text-indigo-300">
+              Forgot password?
+            </Link>
+          </div>
+        </div>
+        <div>
           <label htmlFor="phoneNumber" className="mb-2 block text-sm font-medium text-gray-300">
             Phone number <span className="text-rose-400">*</span>
           </label>
@@ -118,7 +153,7 @@ export default function Login() {
           </div>
         </div>
         <p className="text-xs text-gray-500">
-          We&apos;ll email you a one-time code to finish signing in.
+          After email, password, and phone check, we&apos;ll email you a one-time code to finish signing in.
         </p>
         <div>
           <motion.button

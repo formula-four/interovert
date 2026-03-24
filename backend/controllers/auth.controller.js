@@ -73,13 +73,18 @@ export async function signup(req, res) {
 }
 
 export async function login(req, res) {
-  const { email, phoneNumber, whatsappNumber } = req.body || {};
+  const { email, password, phoneNumber, whatsappNumber } = req.body || {};
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const submittedPhone = String(phoneNumber || '').trim();
 
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
     return res.status(400).json({ message: 'User not found' });
+  }
+
+  const validPassword = await bcrypt.compare(String(password || ''), user.password);
+  if (!validPassword) {
+    return res.status(400).json({ message: 'Invalid password' });
   }
 
   const norm = (p) => String(p || '').replace(/\s/g, '');
