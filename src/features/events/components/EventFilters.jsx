@@ -79,7 +79,7 @@ export default function EventFilters({
 
       <div className="flex flex-wrap items-center gap-4">
         {/* Filter & Sort dropdown — disabled when Near Me is active since geo sort takes over */}
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             onClick={() => !nearMe && setFilterMenuOpen(!filterMenuOpen)}
             disabled={nearMe}

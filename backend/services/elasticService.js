@@ -145,7 +145,7 @@ export async function bulkIndexEvents(docs) {
   return result;
 }
 
-export async function searchEvents({ q, category, dateFrom, dateTo, sortBy, page = 1, limit = 100, userLat, userLng, radius = 50, ownerId }) {
+export async function searchEvents({ q, category, dateFrom, dateTo, sortBy, page = 1, limit = 12, userLat, userLng, radius = 50, ownerId }) {
   const es = getClient();
   if (!es) return null;
 

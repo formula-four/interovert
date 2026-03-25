@@ -8,8 +8,9 @@ import { useAuthGate } from '../context/AuthGateContext'
 import { toast } from 'react-hot-toast'
 import apiClient from '../services/apiClient'
 import { getSocket } from '../utils/socket'
-import { eventCategories } from '../features/events/constants'
+import { eventCategories, EVENTS_PAGE_SIZE } from '../features/events/constants'
 import EventFilters from '../features/events/components/EventFilters'
+import EventListPagination from '../features/events/components/EventListPagination'
 import EventCard from '../features/events/components/EventCard'
 import CreateEventModal from '../features/events/components/CreateEventModal'
 import RecommendedEvents from '../features/events/components/RecommendedEvents'
@@ -25,6 +26,10 @@ export default function Events() {
   const [events, setEvents] = useState([])
   const [eventsInitialLoading, setEventsInitialLoading] = useState(true)
   const eventsFirstLoadDoneRef = useRef(false)
+  const [page, setPage] = useState(1)
+  const pageRef = useRef(1)
+  pageRef.current = page
+  const [totalCount, setTotalCount] = useState(0)
 
   // Geo / Near Me state
   const [nearMe, setNearMe] = useState(false)
@@ -36,6 +41,10 @@ export default function Events() {
   const currentUser = getCurrentUser()
 
   const debounceRef = useRef(null)
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchTerm, selectedCategory, sortBy, nearMe, radius, myEvents, userAddress?.geocode?.lat, userAddress?.geocode?.lng])
 
   // Fetch the user's saved addresses once on mount to get their geo coords
   useEffect(() => {
@@ -65,9 +74,13 @@ export default function Events() {
         query.set('radius', params.radius ?? 25)
       }
 
+      query.set('page', String(params.page ?? 1))
+      query.set('limit', String(EVENTS_PAGE_SIZE))
+
       const qs = query.toString()
       const { data } = await apiClient.get(`/api/events${qs ? `?${qs}` : ''}`)
       setEvents(data.events ?? data)
+      setTotalCount(typeof data.total === 'number' ? data.total : 0)
     } catch {
       toast.error('Failed to load events')
     } finally {
@@ -86,6 +99,7 @@ export default function Events() {
         category: selectedCategory,
         sortBy,
         myEvents,
+        page: pageRef.current,
         ...(nearMe && userAddress?.geocode && {
           userLat: userAddress.geocode.lat,
           userLng: userAddress.geocode.lng,
@@ -100,7 +114,7 @@ export default function Events() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [debouncedLoad])
+  }, [debouncedLoad, page])
 
   useEffect(() => {
     const socket = getSocket()
@@ -196,39 +210,75 @@ export default function Events() {
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-500/25">
               <Sparkles className="h-7 w-7" />
             </span>
-            <h2 className="mt-6 text-lg font-semibold text-white">No events match your filters</h2>
+            <h2 className="mt-6 text-lg font-semibold text-white">
+              {totalCount > 0 ? 'No events on this page' : 'No events match your filters'}
+            </h2>
             <p className="mt-2 max-w-sm text-sm text-zinc-500">
-              Try another category or search term, or be the first to host something new.
+              {totalCount > 0
+                ? 'Go back to a previous page or adjust filters.'
+                : 'Try another category or search term, or be the first to host something new.'}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (!getAuthToken()) {
-                  promptAuth()
-                  return
-                }
-                setIsModalOpen(true)
-              }}
-              className="mt-8 rounded-xl bg-zinc-800 px-5 py-2.5 text-sm font-medium text-white ring-1 ring-zinc-600 transition hover:bg-zinc-700"
-            >
-              Create the first event
-            </button>
+            {totalCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setPage(1)}
+                className="mt-8 rounded-xl bg-zinc-800 px-5 py-2.5 text-sm font-medium text-white ring-1 ring-zinc-600 transition hover:bg-zinc-700"
+              >
+                First page
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!getAuthToken()) {
+                    promptAuth()
+                    return
+                  }
+                  setIsModalOpen(true)
+                }}
+                className="mt-8 rounded-xl bg-zinc-800 px-5 py-2.5 text-sm font-medium text-white ring-1 ring-zinc-600 transition hover:bg-zinc-700"
+              >
+                Create the first event
+              </button>
+            )}
           </motion.div>
         ) : (
-          <ul className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {events.map((event, i) => (
-              <li key={event._id}>
-                <EventCard event={event} index={i} onGuestClick={promptAuth} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {events.map((event, i) => (
+                <li key={event._id}>
+                  <EventCard event={event} index={i} onGuestClick={promptAuth} />
+                </li>
+              ))}
+            </ul>
+            <EventListPagination
+              page={page}
+              total={totalCount}
+              limit={EVENTS_PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </div>
 
       <CreateEventModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onCreated={() => loadEvents({ q: searchTerm, category: selectedCategory, sortBy })}
+        onCreated={() => {
+          setPage(1)
+          loadEvents({
+            q: searchTerm,
+            category: selectedCategory,
+            sortBy,
+            myEvents,
+            page: 1,
+            ...(nearMe && userAddress?.geocode && {
+              userLat: userAddress.geocode.lat,
+              userLng: userAddress.geocode.lng,
+              radius,
+            }),
+          })
+        }}
         categories={eventCategories}
       />
     </div>

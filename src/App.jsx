@@ -16,6 +16,8 @@ import Chat from './components/Chat';
 import ChatBot from './components/Chatbot';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './components/Dashboard';
+import MyFavouriteEvents from './features/events/pages/MyFavouriteEvents';
+import MyBookedEvents from './features/events/pages/MyBookedEvents';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 
@@ -38,6 +40,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-favourites"
+              element={
+                <ProtectedRoute>
+                  <MyFavouriteEvents />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-bookings"
+              element={
+                <ProtectedRoute>
+                  <MyBookedEvents />
                 </ProtectedRoute>
               }
             />

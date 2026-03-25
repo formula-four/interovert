@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Menu, X, LayoutDashboard, User } from 'lucide-react';
+import { Menu, X, LayoutDashboard, User, Heart, Ticket } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../utils/session';
 
@@ -160,6 +160,24 @@ function Navbar() {
                       My dashboard
                     </Link>
                     <Link
+                      to="/my-favourites"
+                      role="menuitem"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    >
+                      <Heart className="h-4 w-4 text-rose-500" aria-hidden />
+                      My favourites
+                    </Link>
+                    <Link
+                      to="/my-bookings"
+                      role="menuitem"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    >
+                      <Ticket className="h-4 w-4 text-emerald-600" aria-hidden />
+                      My bookings
+                    </Link>
+                    <Link
                       to="/profile"
                       role="menuitem"
                       onClick={() => setUserMenuOpen(false)}
@@ -244,6 +262,22 @@ function Navbar() {
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     My dashboard
+                  </Link>
+                  <Link
+                    to="/my-favourites"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <Heart className="h-4 w-4 text-rose-500" />
+                    My favourites
+                  </Link>
+                  <Link
+                    to="/my-bookings"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <Ticket className="h-4 w-4 text-emerald-600" />
+                    My bookings
                   </Link>
                   <Link
                     to="/profile"

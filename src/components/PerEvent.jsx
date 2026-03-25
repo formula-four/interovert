@@ -311,6 +311,8 @@ export default function PerEvent() {
   const [pageLoading, setPageLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [isAttending, setIsAttending] = useState(false)
+  /** Mirrors GET …/interaction-status `canRate`: only non-host participants may rate */
+  const [canRate, setCanRate] = useState(false)
   const [participants, setParticipants] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpeningChat, setIsOpeningChat] = useState(false)
@@ -346,8 +348,10 @@ export default function PerEvent() {
   const spotsLeft = Math.max(0, (event?.maxAttendees ?? 0) - (event?.participantCount ?? 0))
   const isFull = event && spotsLeft === 0
 
-  /** Joined attendees (not the host) may rate anytime */
-  const mayLeaveReview = Boolean(!isOwner && isAttending)
+  const mayLeaveReview = Boolean(canRate)
+
+  /** Whole block (read + write reviews) only after event time, and only for host or joined guests */
+  const showRatingsSection = Boolean(eventEnded && (isOwner || isAttending))
 
   const loadParticipants = useCallback(async () => {
     if (!token || !isOwner) return
@@ -390,6 +394,7 @@ export default function PerEvent() {
       }
       setPageLoading(true)
       setLoadError(false)
+      setCanRate(false)
       try {
         const [eventRes, ratingsRes] = await Promise.all([
           apiClient.get(`/api/events/${id}`),
@@ -413,6 +418,7 @@ export default function PerEvent() {
             const { data: int } = await apiClient.get(`/api/events/${id}/interaction-status`)
             if (cancelled) return
             setIsAttending(!!int.joined)
+            setCanRate(!!int.canRate)
             setIsFavorited(!!int.isFavorited)
             setEventEnded(!!int.eventEnded)
             setMyRating(int.myRating || null)
@@ -420,12 +426,16 @@ export default function PerEvent() {
               setRatingValue(int.myRating.rating)
               setRatingReview(int.myRating.review || '')
             }
-          } catch {
+            } catch {
             try {
               const { data: join } = await apiClient.get(`/api/events/${id}/join-status`)
-              if (!cancelled) setIsAttending(!!join.joined)
+              if (!cancelled) {
+                setIsAttending(!!join.joined)
+                const ended = new Date(ev.datetime).getTime() < Date.now()
+                setCanRate(!!join.joined && !join.isOwner && ended)
+              }
             } catch {
-              /* ignore */
+              if (!cancelled) setCanRate(false)
             }
           }
         }
@@ -448,6 +458,22 @@ export default function PerEvent() {
   useEffect(() => {
     loadParticipants()
   }, [loadParticipants])
+
+  /** When event end time passes while user stays on the page, reveal ratings for hosts / attendees */
+  useEffect(() => {
+    if (!event?.datetime) return undefined
+    const endMs = new Date(event.datetime).getTime()
+    if (endMs <= Date.now()) {
+      setEventEnded(true)
+      return undefined
+    }
+    const delay = Math.min(endMs - Date.now(), 2147483647)
+    const tid = setTimeout(() => {
+      setEventEnded(true)
+      if (!isOwner && isAttending) setCanRate(true)
+    }, delay)
+    return () => clearTimeout(tid)
+  }, [event?.datetime, event?._id, isOwner, isAttending])
 
   useEffect(() => {
     if (pageLoading) return
@@ -505,6 +531,9 @@ export default function PerEvent() {
               const { data: ev } = await apiClient.get(`/api/events/${id}`)
               setEvent(ev)
               setFavoriteCount(ev.favoriteCount || 0)
+              const ended = new Date(ev.datetime).getTime() < Date.now()
+              setEventEnded(ended)
+              setCanRate(ended)
               setTimeout(() => refreshChatPreview(), 400)
             } catch (err) {
               toast.error(err.response?.data?.message || 'Payment verification failed')
@@ -540,6 +569,9 @@ export default function PerEvent() {
       const { data } = await apiClient.get(`/api/events/${id}`)
       setEvent(data)
       setFavoriteCount(data.favoriteCount || 0)
+      const ended = new Date(data.datetime).getTime() < Date.now()
+      setEventEnded(ended)
+      setCanRate(ended)
       setTimeout(() => refreshChatPreview(), 400)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Join failed')
@@ -691,8 +723,12 @@ export default function PerEvent() {
       toast.error('Hosts cannot rate their own event')
       return
     }
-    if (!isAttending) {
-      toast.error('Join this event to leave a review')
+    if (!canRate) {
+      toast.error(
+        isAttending && !eventEnded
+          ? 'You can rate this event after it has ended'
+          : 'Join this event to leave a review',
+      )
       return
     }
 
@@ -1023,20 +1059,42 @@ export default function PerEvent() {
                           ? 'border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/20'
                           : 'border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800'
                       }`}
-                      title={isFavorited ? 'Remove from favorites' : 'Save'}
+                      title={isFavorited ? 'Remove from favourites' : 'Add to favourites'}
                     >
                       {isFavoriteLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                       ) : (
                         <Heart className="h-4 w-4" fill={isFavorited ? 'currentColor' : 'none'} aria-hidden />
                       )}
-                      {isFavoriteLoading ? 'Saving…' : isFavorited ? 'Saved' : 'Save'}
+                      {isFavoriteLoading
+                        ? 'Updating…'
+                        : isFavorited
+                          ? 'In my favourites'
+                          : 'Add to favourites'}
                     </button>
                   </div>
 
-                  <p className="text-center text-xs text-zinc-500">
-                    Saved by {favoriteCount} {favoriteCount === 1 ? 'person' : 'people'}
-                  </p>
+                  <div className="flex flex-col gap-2 border-t border-zinc-800/80 pt-3">
+                    <p className="text-center text-sm text-zinc-300">
+                      {favoriteCount === 0 ? (
+                        <>No one has liked this event yet</>
+                      ) : (
+                        <>
+                          Liked by{' '}
+                          <span className="font-semibold text-white">{favoriteCount}</span>{' '}
+                          {favoriteCount === 1 ? 'person' : 'people'}
+                        </>
+                      )}
+                    </p>
+                    {isAttending && !isOwner ? (
+                      <Link
+                        to="/my-bookings"
+                        className="text-center text-sm font-medium text-emerald-300/90 transition hover:text-emerald-200"
+                      >
+                        View my bookings
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
               </motion.div>
 
@@ -1087,6 +1145,7 @@ export default function PerEvent() {
           />
         )}
 
+        {showRatingsSection ? (
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1123,7 +1182,9 @@ export default function PerEvent() {
                 className="rounded-xl border border-zinc-800 bg-zinc-950 p-5"
               >
                 <p className="font-semibold text-white">Rate this event</p>
-                <p className="mt-1 text-xs text-zinc-500">You joined this event — share a star rating and optional note.</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  The event has ended — share a star rating and optional note.
+                </p>
                 <div className="mt-3 flex items-center gap-1">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
@@ -1164,10 +1225,6 @@ export default function PerEvent() {
               </form>
             )}
 
-            {!isOwner && !isAttending && token ? (
-              <p className="text-sm text-zinc-500">Join this event to rate it and leave a review.</p>
-            ) : null}
-
             <ul className="space-y-3">
               {(ratingSummary.ratings || []).map((row) => {
                 const reviewedAt = row.createdAt ? new Date(row.createdAt) : null
@@ -1199,12 +1256,15 @@ export default function PerEvent() {
             {(!ratingSummary.ratings || ratingSummary.ratings.length === 0) && (
               <p className="py-6 text-center text-sm text-zinc-500">
                 {isOwner
-                  ? 'No reviews yet. When attendees join and submit a rating, it will show up here.'
-                  : 'No ratings yet — join the event to leave the first one.'}
+                  ? 'No reviews yet. When attendees submit a rating after the event, it will show up here.'
+                  : mayLeaveReview
+                    ? 'No reviews yet — you can be the first to add one.'
+                    : 'No reviews yet.'}
               </p>
             )}
           </div>
         </motion.section>
+        ) : null}
         </div>
       </main>
     </div>

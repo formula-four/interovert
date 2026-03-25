@@ -38,6 +38,18 @@ function isOwner(event, userId) {
   return String(event.owner_id) === String(userId);
 }
 
+const EVENTS_LIST_DEFAULT_LIMIT = 12;
+const EVENTS_LIST_MAX_LIMIT = 100;
+
+function parseEventsListPagination(req) {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const rawLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(EVENTS_LIST_MAX_LIMIT, rawLimit)
+    : EVENTS_LIST_DEFAULT_LIMIT;
+  return { page, limit, skip: (page - 1) * limit };
+}
+
 async function getEventStats(eventId) {
   const [participantCount, favoriteCount, ratingAgg] = await Promise.all([
     EventParticipant.countDocuments({ event_id: eventId }),
@@ -63,7 +75,8 @@ async function getEventStats(eventId) {
 }
 
 export async function listEvents(req, res) {
-  const { q, category, dateFrom, dateTo, sortBy, page, limit, userLat, userLng, radius, myEvents } = req.query;
+  const { q, category, dateFrom, dateTo, sortBy, userLat, userLng, radius, myEvents } = req.query;
+  const { page, limit, skip } = parseEventsListPagination(req);
 
   if (isElasticConfigured()) {
     // myEvents=true → filter to events owned by the requesting user (requires auth token)
@@ -105,9 +118,13 @@ export async function listEvents(req, res) {
   }
 
   // MongoDB fallback
-  const events = await Event.find()
+  const filter = {};
+  const total = await Event.countDocuments(filter);
+  const events = await Event.find(filter)
     .populate('address')
     .sort({ datetime: 1, createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
     .lean();
   const eventIds = events.map((e) => e._id);
   const [participantCounts, favoriteCounts, ratingAgg] = await enrichStats(eventIds);
@@ -118,6 +135,8 @@ export async function listEvents(req, res) {
 
   const enriched = events.map((event) => ({
     ...event,
+    recurrenceEnabled: event.recurrence?.enabled || false,
+    recurrenceFreq: event.recurrence?.frequency || null,
     participantCount: participantCountMap.get(String(event._id)) || 0,
     favoriteCount: favoriteCountMap.get(String(event._id)) || 0,
     ratingCount: ratingMap.get(String(event._id))?.ratingCount || 0,
@@ -127,7 +146,7 @@ export async function listEvents(req, res) {
     eventCreatorLabel: event.ownerName,
   }));
 
-  return res.json({ events: enriched, total: enriched.length, page: 1, limit: enriched.length });
+  return res.json({ events: enriched, total, page, limit });
 }
 
 async function enrichStats(eventIds) {
@@ -148,6 +167,75 @@ async function enrichStats(eventIds) {
       { $group: { _id: '$event_id', averageRating: { $avg: '$rating' }, ratingCount: { $sum: 1 } } },
     ]),
   ]);
+}
+
+/** Lean events with populated address — same card shape as listEvents Mongo fallback */
+async function enrichEventsForList(events) {
+  if (!events.length) return [];
+  const eventIds = events.map((e) => e._id);
+  const [participantCounts, favoriteCounts, ratingAgg] = await enrichStats(eventIds);
+  const participantCountMap = new Map(participantCounts.map((c) => [String(c._id), c.count]));
+  const favoriteCountMap = new Map(favoriteCounts.map((c) => [String(c._id), c.count]));
+  const ratingMap = new Map(ratingAgg.map((r) => [String(r._id), r]));
+
+  return events.map((event) => ({
+    ...event,
+    recurrenceEnabled: event.recurrence?.enabled || false,
+    recurrenceFreq: event.recurrence?.frequency || null,
+    participantCount: participantCountMap.get(String(event._id)) || 0,
+    favoriteCount: favoriteCountMap.get(String(event._id)) || 0,
+    ratingCount: ratingMap.get(String(event._id))?.ratingCount || 0,
+    averageRating: ratingMap.get(String(event._id))?.averageRating
+      ? Number(ratingMap.get(String(event._id)).averageRating.toFixed(1))
+      : 0,
+    eventCreatorLabel: event.ownerName,
+  }));
+}
+
+export async function listMyFavoriteEvents(req, res) {
+  const { page, limit, skip } = parseEventsListPagination(req);
+  const userId = req.user._id;
+  const favFilter = { user_id: userId };
+  const total = await EventFavorite.countDocuments(favFilter);
+  const favs = await EventFavorite.find(favFilter)
+    .sort({ updatedAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate({ path: 'event_id', populate: { path: 'address' } })
+    .lean();
+
+  const events = favs.map((f) => f.event_id).filter((e) => e && e._id);
+  const enriched = await enrichEventsForList(events);
+  return res.json({ events: enriched, total, page, limit });
+}
+
+export async function listMyBookedEvents(req, res) {
+  const { page, limit, skip } = parseEventsListPagination(req);
+  const bookingFilter = {
+    participant_id: req.user._id,
+    paymentStatus: { $in: ['free', 'paid'] },
+  };
+  const total = await EventParticipant.countDocuments(bookingFilter);
+  const rows = await EventParticipant.find(bookingFilter)
+    .sort({ joinedAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate({ path: 'event_id', populate: { path: 'address' } })
+    .lean();
+
+  const validRows = rows.filter((r) => r.event_id && r.event_id._id);
+  const events = validRows.map((r) => r.event_id);
+  const enrichedList = await enrichEventsForList(events);
+  const enrichedById = new Map(enrichedList.map((e) => [String(e._id), e]));
+
+  const items = validRows.map((r) => ({
+    joinedAt: r.joinedAt,
+    paymentStatus: r.paymentStatus,
+    amountPaid: r.amountPaid,
+    event: enrichedById.get(String(r.event_id._id)),
+  }));
+
+  return res.json({ items, total, page, limit });
 }
 
 export async function getEvent(req, res) {
@@ -699,7 +787,7 @@ export async function getEventInteractionStatus(req, res) {
     .lean();
 
   const eventEnded = new Date(event.datetime).getTime() < Date.now();
-  const canRate = Boolean(participant) && !owner;
+  const canRate = Boolean(participant) && !owner && eventEnded;
 
   return res.json({
     joined: Boolean(participant),
@@ -757,6 +845,10 @@ export async function submitEventRating(req, res) {
   const joined = await EventParticipant.exists({ event_id: event._id, participant_id: req.user._id });
   if (!joined) {
     return res.status(403).json({ message: 'Only participants can rate this event' });
+  }
+
+  if (new Date(event.datetime).getTime() >= Date.now()) {
+    return res.status(403).json({ message: 'You can rate this event only after it has ended' });
   }
 
   const rating = Number(req.body?.rating);
