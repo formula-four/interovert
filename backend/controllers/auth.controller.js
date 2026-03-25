@@ -148,9 +148,12 @@ export async function forgotPassword(req, res) {
   const resetUrl = `${base}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   if (/localhost|127\.0\.0\.1/i.test(base)) {
+    const pub = env.publicAppUrl ? JSON.stringify(env.publicAppUrl) : '(unset)';
+    const fr = env.frontendUrl ? JSON.stringify(env.frontendUrl) : '(unset)';
     console.warn(
-      '[auth] Password reset link uses localhost — it will not open on another device (e.g. phone). '
-        + 'Set PUBLIC_APP_URL or FRONTEND_URL to your deployed app (https://…) or your PC LAN IP for Wi‑Fi testing.',
+      '[auth] Password reset link fell back to localhost. '
+        + 'PUBLIC_APP_URL / FRONTEND_URL must be set on *this API service* (e.g. Cloud Run → Variables), not Vercel. '
+        + `Currently PUBLIC_APP_URL=${pub} FRONTEND_URL=${fr}. Redeploy API after changing env.`,
     );
   }
 
