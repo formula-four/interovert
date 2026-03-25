@@ -123,7 +123,9 @@ export default function EventFilters({
         {/* My Events — only shown when logged in */}
         {currentUser && (
           <button
+            type="button"
             onClick={() => setMyEvents(!myEvents)}
+            title="Events you created and events you joined"
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
               myEvents
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
@@ -131,7 +133,7 @@ export default function EventFilters({
             }`}
           >
             <UserCircle2 size={16} />
-            My Events
+            My events
           </button>
         )}
 

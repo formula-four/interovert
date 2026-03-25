@@ -25,10 +25,15 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Plus,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import apiClient from '../services/apiClient'
+import { useAuthGate } from '../context/AuthGateContext'
+import { getAuthToken } from '../utils/session'
+import CreateEventModal from '../features/events/components/CreateEventModal'
+import { eventCategories } from '../features/events/constants'
 import { getDisplayEventPhotoUrl } from '../utils/eventImage'
 import { DashboardPageSkeleton, ParticipantsTableSkeleton } from './ui/Skeleton'
 
@@ -305,11 +310,13 @@ const SORT_OPTIONS = [
 ]
 
 export default function Dashboard() {
+  const { promptAuth } = useAuthGate()
   const [stats, setStats]               = useState(null)
   const [events, setEvents]             = useState([])
   const [loading, setLoading]           = useState(true)
   const [refreshing, setRefreshing]     = useState(false)
   const [drawerEvent, setDrawerEvent]   = useState(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
   // ── filter state ──────────────────────────────────────────────────────────
   const [search,        setSearch]        = useState('')
@@ -667,7 +674,7 @@ export default function Dashboard() {
               <p className="max-w-xs text-sm text-zinc-500">
                 {activeFilterCount > 0
                   ? 'Try clearing filters or broadening your search.'
-                  : 'Host your first gathering from the events page—it will show up here automatically.'}
+                  : 'Create your first gathering with the button below—it will show up here automatically.'}
               </p>
               {activeFilterCount > 0 ? (
                 <button
@@ -678,13 +685,20 @@ export default function Dashboard() {
                   Clear filters
                 </button>
               ) : (
-                <Link
-                  to="/events"
-                  className="mt-2 inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/30 transition hover:from-indigo-500 hover:to-violet-500"
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!getAuthToken()) {
+                      promptAuth()
+                      return
+                    }
+                    setIsCreateModalOpen(true)
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/30 transition hover:from-indigo-500 hover:to-violet-500"
                 >
                   Create an event
-                  <ArrowUpRight className="h-4 w-4" />
-                </Link>
+                  <Plus className="h-4 w-4" strokeWidth={2.5} />
+                </button>
               )}
             </div>
           ) : (
@@ -832,6 +846,13 @@ export default function Dashboard() {
           )}
         </motion.div>
       </div>
+
+      <CreateEventModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={() => fetchData(true)}
+        categories={eventCategories}
+      />
 
       {/* Participants drawer */}
       <AnimatePresence>

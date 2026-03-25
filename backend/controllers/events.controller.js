@@ -33,6 +33,7 @@ import {
   createOrder as razorpayCreateOrder,
   verifySignature as razorpayVerifySignature,
 } from '../services/razorpayService.js';
+import { sendBookingConfirmationEmails } from '../services/bookingEmailService.js';
 
 function isOwner(event, userId) {
   return String(event.owner_id) === String(userId);
@@ -78,10 +79,37 @@ export async function listEvents(req, res) {
   const { q, category, dateFrom, dateTo, sortBy, userLat, userLng, radius, myEvents } = req.query;
   const { page, limit, skip } = parseEventsListPagination(req);
 
+  if (myEvents === 'true' && !req.user?._id) {
+    return res.json({ events: [], total: 0, page, limit });
+  }
+
+  let joinedEventIdsRaw = [];
+  if (myEvents === 'true' && req.user?._id) {
+    joinedEventIdsRaw = await EventParticipant.distinct('event_id', {
+      participant_id: req.user._id,
+      paymentStatus: { $ne: 'failed' },
+    });
+  }
+  const joinedEventIdsForEs = joinedEventIdsRaw.map((id) => String(id));
+
   if (isElasticConfigured()) {
-    // myEvents=true → filter to events owned by the requesting user (requires auth token)
+    // myEvents=true → events you host OR joined (non-failed booking)
     const ownerId = myEvents === 'true' && req.user?._id ? req.user._id : undefined;
-    const esResult = await esSearch({ q, category, dateFrom, dateTo, sortBy, page, limit, userLat, userLng, radius, ownerId });
+    const joinedEventIds = myEvents === 'true' && req.user?._id ? joinedEventIdsForEs : undefined;
+    const esResult = await esSearch({
+      q,
+      category,
+      dateFrom,
+      dateTo,
+      sortBy,
+      page,
+      limit,
+      userLat,
+      userLng,
+      radius,
+      ownerId,
+      joinedEventIds,
+    });
     if (esResult) {
       const eventIds = esResult.hits.map((h) => h._id);
 
@@ -119,6 +147,9 @@ export async function listEvents(req, res) {
 
   // MongoDB fallback
   const filter = {};
+  if (myEvents === 'true' && req.user?._id) {
+    filter.$or = [{ owner_id: req.user._id }, { _id: { $in: joinedEventIdsRaw } }];
+  }
   const total = await Event.countDocuments(filter);
   const events = await Event.find(filter)
     .populate('address')
@@ -338,8 +369,8 @@ export async function createEvent(req, res) {
     activities: payload.activities,
     maxAttendees: Number(payload.maxAttendees),
     ticketPrice:  payload.ticketPrice ? Number(payload.ticketPrice) : 0,
-    aboutYou: payload.aboutYou,
-    expectations: payload.expectations,
+    aboutYou: (payload.aboutYou ?? '').trim(),
+    expectations: (payload.expectations ?? '').trim(),
     owner_id: req.user._id,
     ownerName: req.user.name,
     recurrence,
@@ -501,7 +532,7 @@ export async function joinEvent(req, res) {
     io.to(getUserRoom(event.owner_id)).emit('notification:new', notification);
   }
 
-  const owner = await User.findById(event.owner_id).select('name whatsappNumber phoneNumber');
+  const owner = await User.findById(event.owner_id).select('name whatsappNumber phoneNumber email');
   const whatsappResult = await sendEventJoinWhatsapp({
     creatorName: event.ownerName,
     creatorWhatsappNumber: owner?.whatsappNumber || owner?.phoneNumber || null,
@@ -509,6 +540,14 @@ export async function joinEvent(req, res) {
     eventTitle: event.name,
     phoneNumber: req.user.phoneNumber,
   });
+
+  sendBookingConfirmationEmails({
+    event,
+    ownerEmail: owner?.email,
+    bookerEmail: req.user.email,
+    bookerName: req.user.name,
+    paidAmount: null,
+  }).catch((e) => console.error('[booking email]', e.message));
 
   // Record recommendation signal (fire-and-forget — never blocks the response)
   const populatedForSignal = await event.populate('address');
@@ -670,7 +709,7 @@ export async function verifyPayment(req, res) {
   if (io) io.to(getUserRoom(event.owner_id)).emit('notification:new', notification);
 
   // WhatsApp notification to owner
-  const owner = await User.findById(event.owner_id).select('name whatsappNumber phoneNumber');
+  const owner = await User.findById(event.owner_id).select('name whatsappNumber phoneNumber email');
   sendEventJoinWhatsapp({
     creatorName:           event.ownerName,
     creatorWhatsappNumber: owner?.whatsappNumber || owner?.phoneNumber || null,
@@ -678,6 +717,14 @@ export async function verifyPayment(req, res) {
     eventTitle:  event.name,
     phoneNumber: req.user.phoneNumber,
   }).catch(() => {});
+
+  sendBookingConfirmationEmails({
+    event,
+    ownerEmail: owner?.email,
+    bookerEmail: req.user.email,
+    bookerName: req.user.name,
+    paidAmount: event.ticketPrice,
+  }).catch((e) => console.error('[booking email]', e.message));
 
   // Record recommendation signal
   const populated = await event.populate('address');

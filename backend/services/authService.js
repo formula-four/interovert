@@ -111,3 +111,54 @@ export async function sendPasswordResetEmail(email, resetUrl) {
     return false;
   }
 }
+
+/** Generic HTML mail (Resend → nodemailer). Used for booking confirmations, etc. */
+export async function sendHtmlEmail(to, subject, html) {
+  const address = String(to || '').trim();
+  if (!address || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    return false;
+  }
+
+  if (env.resendApiKey) {
+    try {
+      const resend = new Resend(env.resendApiKey);
+      const { error } = await resend.emails.send({
+        from: env.emailFrom,
+        to: address,
+        subject,
+        html,
+      });
+      if (!error) return true;
+      console.error('Resend sendHtmlEmail failed, falling back to nodemailer:', error.message);
+    } catch (err) {
+      console.error('Resend sendHtmlEmail threw, falling back to nodemailer:', err.message);
+    }
+  }
+
+  if (!env.emailUser || !env.emailPass) {
+    return false;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: env.emailUser,
+        pass: env.emailPass,
+      },
+    });
+    await transporter.sendMail({
+      from: { name: 'Find My Buddy', address: env.emailUser },
+      to: address,
+      subject,
+      html,
+    });
+    return true;
+  } catch (error) {
+    console.error('Nodemailer sendHtmlEmail failed:', error.message);
+    return false;
+  }
+}
