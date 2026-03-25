@@ -10,7 +10,7 @@ on:
 
 env:
   PROJECT_ID: project-b56e5d64-2657-4923-937
-  SERVICE_NAME: node-api
+  SERVICE_NAME: introvert-api
   REPO_NAME: introvert-backend-repo
   REGION: us-central1
 
