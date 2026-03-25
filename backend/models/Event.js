@@ -28,8 +28,8 @@ const eventSchema = new mongoose.Schema(
     category:       { type: String, required: true, trim: true },
     activities:     { type: String, required: true, trim: true },
     maxAttendees:   { type: Number, required: true, min: 1 },
-    aboutYou:       { type: String, required: true, trim: true },
-    expectations:   { type: String, required: true, trim: true },
+    aboutYou:       { type: String, default: '', trim: true },
+    expectations:   { type: String, default: '', trim: true },
     owner_id:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     ownerName:      { type: String, required: true, trim: true },
     // Ticketing — 0 means free

@@ -11,12 +11,12 @@ export function validateEventIdParam(req, res, next) {
 
 export function validateCreateEvent(req, res, next) {
   const {
-    name, description, datetime, category, activities, maxAttendees, aboutYou, expectations,
+    name, description, datetime, category, activities, maxAttendees,
     // address: either an existing addressId OR address fields
     addressId, addressLine1, addressCity,
   } = req.body || {};
 
-  const required = { name, description, datetime, category, activities, maxAttendees, aboutYou, expectations };
+  const required = { name, description, datetime, category, activities, maxAttendees };
   const missing = Object.entries(required)
     .filter(([, v]) => v === undefined || v === null || v === '')
     .map(([k]) => k);

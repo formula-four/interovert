@@ -44,6 +44,11 @@ export default function EventListPagination({
   const totalPages = Math.max(1, Math.ceil(total / limit) || 1)
   const items = useMemo(() => getVisiblePageItems(page, totalPages), [page, totalPages])
 
+  const goToPage = (next) => {
+    onPageChange(next)
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }
+
   if (total <= 0 || totalPages <= 1) return null
 
   return (
@@ -57,7 +62,7 @@ export default function EventListPagination({
         <button
           type="button"
           disabled={disabled || page <= 1}
-          onClick={() => onPageChange(1)}
+          onClick={() => goToPage(1)}
           className={navBtn}
           aria-label="First page"
         >
@@ -66,7 +71,7 @@ export default function EventListPagination({
         <button
           type="button"
           disabled={disabled || page <= 1}
-          onClick={() => onPageChange(page - 1)}
+          onClick={() => goToPage(page - 1)}
           className={navBtn}
           aria-label="Previous page"
         >
@@ -88,7 +93,7 @@ export default function EventListPagination({
                 key={item}
                 type="button"
                 disabled={disabled}
-                onClick={() => onPageChange(item)}
+                onClick={() => goToPage(item)}
                 className={`${pageBtnBase} ${
                   page === item
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30 hover:bg-indigo-500'
@@ -106,7 +111,7 @@ export default function EventListPagination({
         <button
           type="button"
           disabled={disabled || page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
+          onClick={() => goToPage(page + 1)}
           className={navBtn}
           aria-label="Next page"
         >
@@ -115,7 +120,7 @@ export default function EventListPagination({
         <button
           type="button"
           disabled={disabled || page >= totalPages}
-          onClick={() => onPageChange(totalPages)}
+          onClick={() => goToPage(totalPages)}
           className={navBtn}
           aria-label="Last page"
         >

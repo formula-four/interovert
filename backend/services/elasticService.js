@@ -145,7 +145,21 @@ export async function bulkIndexEvents(docs) {
   return result;
 }
 
-export async function searchEvents({ q, category, dateFrom, dateTo, sortBy, page = 1, limit = 12, userLat, userLng, radius = 50, ownerId }) {
+export async function searchEvents({
+  q,
+  category,
+  dateFrom,
+  dateTo,
+  sortBy,
+  page = 1,
+  limit = 12,
+  userLat,
+  userLng,
+  radius = 50,
+  ownerId,
+  /** When set (incl. []), "my events" = owned OR joined; requires ownerId. */
+  joinedEventIds,
+}) {
   const es = getClient();
   if (!es) return null;
 
@@ -166,7 +180,13 @@ export async function searchEvents({ q, category, dateFrom, dateTo, sortBy, page
     filter.push({ term: { category: category.toLowerCase() } });
   }
 
-  if (ownerId) {
+  if (ownerId && joinedEventIds !== undefined) {
+    const should = [{ term: { owner_id: String(ownerId) } }];
+    if (joinedEventIds.length > 0) {
+      should.push({ ids: { values: joinedEventIds.map(String) } });
+    }
+    filter.push({ bool: { should, minimum_should_match: 1 } });
+  } else if (ownerId) {
     filter.push({ term: { owner_id: String(ownerId) } });
   }
 

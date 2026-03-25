@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -36,6 +36,20 @@ const inputBase =
 
 const labelBase =
   'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500';
+
+const reqStar = <span className="text-rose-400/90">*</span>;
+
+const MAX_ATTENDEES_LIMIT = 10000;
+
+/** Local `YYYY-MM-DDTHH:mm` for `<input type="datetime-local" min={…} />` */
+function toDatetimeLocalValue(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function startOfLocalMinute(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()).getTime();
+}
 
 const sectionTitle =
   'flex items-center gap-2 text-sm font-semibold text-zinc-100';
@@ -82,6 +96,8 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
   const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const datetimeLocalMin = useMemo(() => toDatetimeLocalValue(new Date()), [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
     const token = getAuthToken();
@@ -124,6 +140,22 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
       addressPayload = { ...newAddress };
     }
 
+    const start = eventData.datetime ? new Date(eventData.datetime) : null;
+    if (!start || Number.isNaN(start.getTime())) {
+      toast.error('Please choose a valid date and time');
+      return;
+    }
+    if (startOfLocalMinute(start) < startOfLocalMinute(new Date())) {
+      toast.error('Event date and time must be in the future');
+      return;
+    }
+
+    const maxN = Number(eventData.maxAttendees);
+    if (Number.isFinite(maxN) && maxN > MAX_ATTENDEES_LIMIT) {
+      toast.error('Attendees cannot be more than 10,000.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await apiClient.post('/api/events', {
@@ -159,6 +191,12 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
   const scrollAreaClass =
     'flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-6 [scrollbar-width:thin] [scrollbar-color:rgba(139,92,246,0.35)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-violet-500/30 [&::-webkit-scrollbar-track]:bg-transparent';
+
+  const maxAttendeesNum = Number(eventData.maxAttendees);
+  const maxAttendeesExceeded =
+    eventData.maxAttendees !== '' &&
+    Number.isFinite(maxAttendeesNum) &&
+    maxAttendeesNum > MAX_ATTENDEES_LIMIT;
 
   return (
     <AnimatePresence>
@@ -220,7 +258,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                   <FormSection
                     icon={ImagePlus}
                     title="Cover image"
-                    hint="A strong visual helps your event stand out in the feed."
+                    hint="Optional—a strong visual helps your event stand out in the feed."
                   >
                     <input
                       ref={fileInputRef}
@@ -271,7 +309,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                   >
                     <div>
                       <label className={labelBase} htmlFor="ce-name">
-                        Event name
+                        Event name {reqStar}
                       </label>
                       <input
                         id="ce-name"
@@ -286,7 +324,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                     </div>
                     <div>
                       <label className={labelBase} htmlFor="ce-desc">
-                        Description
+                        Description {reqStar}
                       </label>
                       <textarea
                         id="ce-desc"
@@ -342,7 +380,9 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
                     {addressMode === 'saved' && savedAddresses.length > 0 && (
                       <div className="relative">
-                        <label className={labelBase}>Pick address</label>
+                        <label className={labelBase}>
+                          Pick address {reqStar}
+                        </label>
                         <select
                           value={selectedAddressId}
                           onChange={(e) => setSelectedAddressId(e.target.value)}
@@ -422,7 +462,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
                         <div>
                           <label className={labelBase}>
-                            Street address <span className="text-rose-400/90">*</span>
+                            Street address {reqStar}
                           </label>
                           <input
                             type="text"
@@ -451,7 +491,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                           <div className="sm:col-span-1">
                             <label className={labelBase}>
-                              City <span className="text-rose-400/90">*</span>
+                              City {reqStar}
                             </label>
                             <input
                               type="text"
@@ -463,7 +503,10 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                             />
                           </div>
                           <div>
-                            <label className={labelBase}>State</label>
+                            <label className={labelBase}>
+                              State{' '}
+                              <span className="font-normal normal-case text-zinc-600">(optional)</span>
+                            </label>
                             <input
                               type="text"
                               value={newAddress.addressState}
@@ -473,7 +516,10 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                             />
                           </div>
                           <div>
-                            <label className={labelBase}>Country</label>
+                            <label className={labelBase}>
+                              Country{' '}
+                              <span className="font-normal normal-case text-zinc-600">(optional)</span>
+                            </label>
                             <input
                               type="text"
                               value={newAddress.addressCountry}
@@ -501,12 +547,14 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
                         <label className={labelBase} htmlFor="ce-dt">
-                          Date & time
+                          Date & time {reqStar}
                         </label>
                         <input
                           id="ce-dt"
                           type="datetime-local"
                           required
+                          min={datetimeLocalMin}
+                          value={eventData.datetime}
                           onChange={(e) =>
                             setEventData((prev) => ({ ...prev, datetime: e.target.value }))
                           }
@@ -515,7 +563,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                       </div>
                       <div>
                         <label className={labelBase} htmlFor="ce-cat">
-                          Category
+                          Category {reqStar}
                         </label>
                         <div className="relative">
                           <Tag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-400/80" />
@@ -544,7 +592,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                     {eventData.category === 'Other' && (
                       <div>
                         <label className={labelBase} htmlFor="ce-other">
-                          Specify category
+                          Specify category {reqStar}
                         </label>
                         <input
                           id="ce-other"
@@ -622,25 +670,30 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                             End after{' '}
                             <span className="font-normal normal-case text-zinc-600">(optional)</span>
                           </label>
-                          <div className="relative">
+                          <div className="relative w-full">
                             <input
-                              type="number"
-                              min={2}
-                              max={52}
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="off"
                               placeholder="e.g. 8"
                               value={recurrenceEndAfter}
-                              onChange={(e) => setRecurrenceEndAfter(e.target.value)}
-                              className={inputBase}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(/\D/g, '');
+                                if (digits === '') {
+                                  setRecurrenceEndAfter('');
+                                  return;
+                                }
+                                const n = parseInt(digits, 10);
+                                setRecurrenceEndAfter(n > 52 ? '52' : String(n));
+                              }}
+                              className={`${inputBase} ${recurrenceEndAfter ? 'pr-[6.75rem]' : ''}`}
                             />
-                            {recurrenceEndAfter && (
+                            {recurrenceEndAfter ? (
                               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
                                 occurrences
                               </span>
-                            )}
+                            ) : null}
                           </div>
-                          <p className="mt-1 text-[11px] text-zinc-600">
-                            Leave blank to repeat indefinitely
-                          </p>
                         </div>
                       </div>
                     )}
@@ -654,7 +707,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                   >
                     <div>
                       <label className={labelBase} htmlFor="ce-act">
-                        What will we do?
+                        What will we do? {reqStar}
                       </label>
                       <textarea
                         id="ce-act"
@@ -669,7 +722,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                     </div>
                     <div>
                       <label className={labelBase} htmlFor="ce-max">
-                        Maximum attendees
+                        Maximum attendees {reqStar}
                       </label>
                       <div className="relative">
                         <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-400/80" />
@@ -679,17 +732,29 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                           required
                           min={1}
                           placeholder="20"
+                          value={eventData.maxAttendees}
                           onChange={(e) =>
                             setEventData((prev) => ({ ...prev, maxAttendees: e.target.value }))
                           }
-                          className={`${inputBase} pl-10`}
+                          aria-invalid={maxAttendeesExceeded}
+                          className={`${inputBase} pl-10 ${
+                            maxAttendeesExceeded
+                              ? 'border-rose-500/60 ring-1 ring-rose-500/30 focus:border-rose-500/70 focus:ring-rose-500/25'
+                              : ''
+                          }`}
                         />
                       </div>
+                      {maxAttendeesExceeded ? (
+                        <p className="mt-1 text-xs text-rose-400" role="alert">
+                          Attendees cannot be more than 10,000.
+                        </p>
+                      ) : null}
                     </div>
                     {/* Ticket price */}
                     <div>
                       <label className={labelBase} htmlFor="ce-price">
-                        Ticket price (₹)
+                        Ticket price (₹){' '}
+                        <span className="font-normal normal-case text-zinc-600">(optional)</span>
                       </label>
                       <div className="relative">
                         <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-400/80" />
@@ -713,11 +778,11 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
                     <div>
                       <label className={labelBase} htmlFor="ce-about">
-                        Something fun about you
+                        Something fun about you{' '}
+                        <span className="font-normal normal-case text-zinc-600">(optional)</span>
                       </label>
                       <textarea
                         id="ce-about"
-                        required
                         rows={3}
                         placeholder="Host intro—keeps things human"
                         onChange={(e) =>
@@ -728,11 +793,11 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                     </div>
                     <div>
                       <label className={labelBase} htmlFor="ce-exp">
-                        What to expect?
+                        What to expect?{' '}
+                        <span className="font-normal normal-case text-zinc-600">(optional)</span>
                       </label>
                       <textarea
                         id="ce-exp"
-                        required
                         rows={3}
                         placeholder="Duration, cost, accessibility, what to bring…"
                         onChange={(e) =>
@@ -747,9 +812,12 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
               {/* Footer CTA */}
               <footer className="shrink-0 border-t border-zinc-800/90 bg-zinc-950/90 px-6 py-4 backdrop-blur-md">
+                <p className="mb-3 text-center text-[11px] text-zinc-500">
+                  <span className="text-rose-400/90">*</span> Required field
+                </p>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || maxAttendeesExceeded}
                   aria-busy={isSubmitting}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-violet-500 to-fuchsia-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-950/40 transition-[transform,box-shadow] hover:from-violet-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-violet-900/50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                 >
