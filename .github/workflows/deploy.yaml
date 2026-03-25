@@ -1,0 +1,76 @@
+name: Manual Cloud Run Deploy
+
+on: 
+  workflow_dispatch:
+    inputs:
+      custom_env_vars:
+        description: 'Variables to upsert (Format: KEY=value,KEY2=value2). Masked in logs.'
+        required: false
+        type: string
+
+env:
+  PROJECT_ID: project-b56e5d64-2657-4923-937
+  SERVICE_NAME: node-api
+  REPO_NAME: introvert-backend-repo
+  REGION: us-central1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # SECURITY: MASK CUSTOM INPUTS
+    # Prevents sensitive variables typed in the GitHub UI from appearing in the logs.
+    - name: Mask Custom Inputs
+      run: |
+        USER_INPUT="${{ inputs.custom_env_vars }}"
+        if [ -n "$USER_INPUT" ]; then
+          echo "::add-mask::$USER_INPUT"
+        fi
+
+    # AUTHENTICATION: WORKLOAD IDENTITY FEDERATION
+    - name: Google Auth
+      id: auth
+      uses: 'google-github-actions/auth@v2'
+      with:
+        workload_identity_provider: 'projects/1049016103787/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+        service_account: 'github-actions-deployer@project-b56e5d64-2657-4923-937.iam.gserviceaccount.com'
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker $REGION-docker.pkg.dev
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_PATH=$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:${{ github.sha }}
+        docker build -t $IMAGE_PATH .
+        docker push $IMAGE_PATH
+
+    - name: Deploy to Cloud Run
+      run: |
+        IMAGE_PATH=$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:${{ github.sha }}
+        USER_VARS="${{ inputs.custom_env_vars }}"
+
+        # We only pass the IMAGE and REGION because your VPC/Network settings 
+        # (like private-ranges-only) are "sticky" and will be preserved automatically.
+        DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
+          --image=$IMAGE_PATH \
+          --region=$REGION"
+
+        if [ -z "$USER_VARS" ]; then
+          echo "Deploying code only. Existing environment variables and VPC settings are preserved."
+          $DEPLOY_CMD
+        else
+          echo "Deploying with updated environment variables (Values are masked)..."
+          $DEPLOY_CMD --update-env-vars="$USER_VARS"
+        fi
