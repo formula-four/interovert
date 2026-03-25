@@ -111,6 +111,7 @@ function KpiCard({ icon: Icon, label, value, sub, accent, delay = 0 }) {
                 : 'linear-gradient(135deg, rgb(245 158 11 / 0.45), rgb(249 115 22 / 0.2))',
         }}
       />
+      {/* bottom gradient */}
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div className="relative flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
