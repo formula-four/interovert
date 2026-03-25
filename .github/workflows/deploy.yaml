@@ -1,10 +1,10 @@
-name: Manual Cloud Run Deploy
+name: Manual Backend Deploy on GCP
 
 on: 
   workflow_dispatch:
     inputs:
       custom_env_vars:
-        description: 'Variables to upsert (Format: KEY=value,KEY2=value2). Masked in logs.'
+        description: 'ENV Variables to upsert (Format: KEY=value,KEY2=value2).'
         required: false
         type: string
 
