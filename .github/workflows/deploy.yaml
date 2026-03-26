@@ -7,6 +7,10 @@ on:
         description: 'ENV Variables to upsert (Format: KEY=value,KEY2=value2).'
         required: false
         type: string
+      remove_env_vars:
+        description: 'ENV Variables to remove (Format: KEY1,KEY2).'
+        required: false
+        type: string
 
 env:
   PROJECT_ID: project-b56e5d64-2657-4923-937
@@ -28,7 +32,6 @@ jobs:
       uses: actions/checkout@v4
 
     # SECURITY: MASK CUSTOM INPUTS
-    # Prevents sensitive variables typed in the GitHub UI from appearing in the logs.
     - name: Mask Custom Inputs
       run: |
         USER_INPUT="${{ inputs.custom_env_vars }}"
@@ -61,17 +64,31 @@ jobs:
       run: |
         IMAGE_PATH=$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:${{ github.sha }}
         USER_VARS="${{ inputs.custom_env_vars }}"
+        REMOVE_VARS="${{ inputs.remove_env_vars }}"
 
-        # We only pass the IMAGE and REGION because your VPC/Network settings 
-        # (like private-ranges-only) are "sticky" and will be preserved automatically.
-        DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
-          --image=$IMAGE_PATH \
-          --region=$REGION"
+        # Use a bash array to construct the command safely
+        DEPLOY_ARGS=(
+          "gcloud" "run" "deploy" "$SERVICE_NAME"
+          "--image=$IMAGE_PATH"
+          "--region=$REGION"
+        )
 
-        if [ -z "$USER_VARS" ]; then
-          echo "Deploying code only. Existing environment variables and VPC settings are preserved."
-          $DEPLOY_CMD
-        else
+        # Check and append the update flag if provided
+        if [ -n "$USER_VARS" ]; then
           echo "Deploying with updated environment variables (Values are masked)..."
-          $DEPLOY_CMD --update-env-vars="$USER_VARS"
+          DEPLOY_ARGS+=("--update-env-vars=$USER_VARS")
         fi
+
+        # Check and append the remove flag if provided
+        if [ -n "$REMOVE_VARS" ]; then
+          echo "Removing environment variables: $REMOVE_VARS"
+          DEPLOY_ARGS+=("--remove-env-vars=$REMOVE_VARS")
+        fi
+
+        # Print a clear log if no env var changes are being made
+        if [ -z "$USER_VARS" ] && [ -z "$REMOVE_VARS" ]; then
+          echo "Deploying code only. Existing environment variables and VPC settings are preserved."
+        fi
+
+        # Execute the final command
+        "${DEPLOY_ARGS[@]}"
