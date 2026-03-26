@@ -163,19 +163,60 @@ export async function searchEvents({
   const es = getClient();
   if (!es) return null;
 
-  const must = [];
+  const must   = [];
   const filter = [];
+  const should = []; // outer should — adds bonus score but never filters
 
+  // ─── Text search ─────────────────────────────────────────────────────────
   if (q && q.trim()) {
+    const trimQ = q.trim();
+
+    // Inner bool: at least ONE clause must match (ensures relevance).
+    // Multiple clauses score on top of each other — higher tiers win.
     must.push({
-      multi_match: {
-        query: q.trim(),
-        fields: ['name^3', 'description', 'activities', 'ownerName', 'venue'],
-        fuzziness: 'AUTO',
+      bool: {
+        should: [
+          // ── Tier 1: Exact phrase ─ "yoga park" matches "Yoga in the Park" ──
+          { match_phrase: { name:        { query: trimQ, boost: 10 } } },
+          { match_phrase: { description: { query: trimQ, boost: 3  } } },
+          { match_phrase: { activities:  { query: trimQ, boost: 3  } } },
+
+          // ── Tier 2: Phrase prefix ─ partial input "yog" → "Yoga session" ──
+          { match_phrase_prefix: { name:        { query: trimQ, boost: 6, max_expansions: 20 } } },
+          { match_phrase_prefix: { description: { query: trimQ, boost: 2, max_expansions: 10 } } },
+
+          // ── Tier 3: Best-fields multi_match ─ standard token match ────────
+          {
+            multi_match: {
+              query:    trimQ,
+              fields:   ['name^4', 'description^2', 'activities^2', 'ownerName', 'venue'],
+              type:     'best_fields',
+              operator: 'or',
+            },
+          },
+
+          // ── Tier 4: Fuzzy fallback ─ catches typos ("yofa" → "yoga") ──────
+          {
+            multi_match: {
+              query:          trimQ,
+              fields:         ['name^3', 'description', 'activities'],
+              fuzziness:      'AUTO',
+              prefix_length:  1,   // first char must be correct — avoids noise
+              max_expansions: 10,
+              boost:          0.8,
+            },
+          },
+        ],
+        minimum_should_match: 1,
       },
     });
+
+    // Outer should: bonus score for an exact full-title match (case-sensitive keyword)
+    // Does NOT filter — only lifts the score of an exact match to the very top.
+    should.push({ term: { 'name.keyword': { value: trimQ, boost: 15 } } });
   }
 
+  // ─── Filters (do not affect score) ───────────────────────────────────────
   if (category && category !== 'all') {
     filter.push({ term: { category: category.toLowerCase() } });
   }
@@ -192,14 +233,12 @@ export async function searchEvents({
 
   const range = {};
   if (dateFrom) range.gte = dateFrom;
-  if (dateTo) range.lte = dateTo;
+  if (dateTo)   range.lte = dateTo;
   if (Object.keys(range).length) {
     filter.push({ range: { datetime: range } });
   }
 
   const hasGeo = userLat != null && userLng != null;
-
-  // When user location is provided, filter to events within radius
   if (hasGeo) {
     filter.push({
       geo_distance: {
@@ -209,16 +248,21 @@ export async function searchEvents({
     });
   }
 
+  // ─── Sort ─────────────────────────────────────────────────────────────────
+  // Priority: geo (nearest first) > text relevance > explicit sortBy > date
   const sort = [];
   if (hasGeo) {
-    // Nearest first — overrides all other sort options
     sort.push({
       _geo_distance: {
         location: { lat: Number(userLat), lon: Number(userLng) },
         order: 'asc',
-        unit: 'km',
+        unit:  'km',
       },
     });
+  } else if (q && q.trim()) {
+    // When searching by text, sort by relevance score first, then date
+    sort.push({ _score: 'desc' });
+    sort.push({ datetime: 'asc' });
   } else if (sortBy === 'name') {
     sort.push({ 'name.keyword': 'asc' });
   } else {
@@ -230,8 +274,9 @@ export async function searchEvents({
   const body = {
     query: {
       bool: {
-        must: must.length ? must : [{ match_all: {} }],
+        must:   must.length   ? must   : [{ match_all: {} }],
         filter,
+        ...(should.length && { should }),
       },
     },
     sort,
@@ -246,11 +291,11 @@ export async function searchEvents({
     const hits = result.hits.hits.map((h) => ({
       _id: h._id,
       ...h._source,
-      // distance is the first sort value when geo sort is active
+      _score: h._score,
       ...(hasGeo && h.sort?.[0] != null && { distanceKm: Number(h.sort[0].toFixed(1)) }),
     }));
     const total = typeof result.hits.total === 'number' ? result.hits.total : result.hits.total.value;
-    console.log(`[elastic] search: ${total} results (page ${page})${hasGeo ? ` within ${radius}km` : ''}`);
+    console.log(`[elastic] search "${q || '*'}" → ${total} hits (page ${page})${hasGeo ? ` within ${radius}km` : ''}`);
     return { hits, total, page: Number(page), limit: Number(limit) };
   } catch (err) {
     console.error('[elastic] searchEvents failed:', err.message);
