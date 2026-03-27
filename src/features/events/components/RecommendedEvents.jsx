@@ -21,21 +21,29 @@ export default function RecommendedEvents() {
   const scrollRef                     = useRef(null);
 
   useEffect(() => {
-    // Only fetch if user is logged in
     if (!getAuthToken()) {
       setLoading(false);
       return;
     }
 
+    // Fetch user's saved address geocode first (best-effort), then recommendations.
+    // If no address or geocode, recommendations still work — just without geo boost.
     apiClient
-      .get('/api/events/recommendations?limit=8')
+      .get('/api/addresses')
+      .catch(() => ({ data: [] }))
+      .then(({ data }) => {
+        const addresses  = Array.isArray(data) ? data : (data.addresses ?? []);
+        const withGeo    = addresses.find((a) => a.geocode?.lat && a.geocode?.lng);
+        const geoParams  = withGeo
+          ? `&userLat=${withGeo.geocode.lat}&userLng=${withGeo.geocode.lng}`
+          : '';
+        return apiClient.get(`/api/events/recommendations?limit=8${geoParams}`);
+      })
       .then(({ data }) => {
         setEvents(data.events ?? []);
         setTopCategory(data.topCategory ?? null);
       })
-      .catch(() => {
-        // Silent — recommendations are non-critical
-      })
+      .catch(() => {/* silent — recommendations are non-critical */})
       .finally(() => setLoading(false));
   }, []);
 
@@ -172,9 +180,17 @@ function RecommendCard({ event, index }) {
       <div className="flex flex-col gap-1.5 p-4">
         <h3 className="line-clamp-1 text-sm font-semibold text-white">{event.name}</h3>
 
-        <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <MapPin className="h-3 w-3 shrink-0 text-zinc-600" />
-          <span className="line-clamp-1">{event.venue || event.city || 'Venue TBD'}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 text-xs text-zinc-500 min-w-0">
+            <MapPin className="h-3 w-3 shrink-0 text-zinc-600" />
+            <span className="line-clamp-1">{event.venue || event.city || 'Venue TBD'}</span>
+          </div>
+          {event.distanceKm != null && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-indigo-900/50 px-2 py-0.5 text-[11px] text-indigo-300 ring-1 ring-indigo-500/20">
+              <MapPin className="h-2.5 w-2.5" />
+              {event.distanceKm} km
+            </span>
+          )}
         </div>
 
         <Link

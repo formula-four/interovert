@@ -971,8 +971,10 @@ export async function getRecommendedEvents(req, res) {
     return res.json({ events: [], total: 0, topCategory: null, reason: 'not_configured' });
   }
 
-  const limit = Math.min(Number(req.query.limit) || 8, 20);
-  const result = await getRecommendations(String(req.user._id), limit);
+  const limit   = Math.min(Number(req.query.limit) || 8, 20);
+  const userLat = req.query.userLat != null ? Number(req.query.userLat) : null;
+  const userLng = req.query.userLng != null ? Number(req.query.userLng) : null;
+  const result  = await getRecommendations(String(req.user._id), limit, userLat, userLng);
 
   if (!result.hits.length) {
     return res.json({ events: [], total: 0, topCategory: null, reason: 'no_history' });
