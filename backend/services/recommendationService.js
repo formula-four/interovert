@@ -26,6 +26,20 @@ const SIGNAL_WEIGHTS = {
   favorite: 2,
 };
 
+// ─── Haversine distance (km) ──────────────────────────────────────────────────
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R    = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a    =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ─── Client (shared singleton, lazy-init) ─────────────────────────────────────
 
 let _client = null;
@@ -130,9 +144,11 @@ export async function recordSignal({ userId, eventId, category, city = '', signa
  *
  * @param {string} userId
  * @param {number} [limit=8]
+ * @param {number|null} [userLat] - User's latitude (from saved address)
+ * @param {number|null} [userLng] - User's longitude (from saved address)
  * @returns {{ hits: object[], total: number, topCategory: string|null }}
  */
-export async function getRecommendations(userId, limit = 8) {
+export async function getRecommendations(userId, limit = 8, userLat = null, userLng = null) {
   const es = getClient();
   if (!es) return { hits: [], total: 0, topCategory: null };
 
@@ -183,35 +199,82 @@ export async function getRecommendations(userId, limit = 8) {
       },
     }));
 
+    const hasGeo = userLat != null && userLng != null;
+
+    // Base bool query — category relevance + exclusions + future-only filter
+    const baseBoolQuery = {
+      bool: {
+        should:               shouldClauses,
+        minimum_should_match: 1,
+        must_not:             interactedIds.length ? [{ ids: { values: interactedIds } }] : [],
+        filter:               [{ range: { datetime: { gte: 'now' } } }],
+      },
+    };
+
+    // When the user's geo coords are available, wrap the bool in a
+    // function_score that adds a Gaussian proximity boost (0–3 points).
+    //
+    // Score breakdown:
+    //   Category boost  → 0–10  (primary signal — never overridden)
+    //   Geo decay boost → 0–3   (secondary — nearby events get extra lift)
+    //
+    // Gaussian params:
+    //   offset 5km  → full geo score within 5 km of user
+    //   scale  30km → score halves at 30 km
+    //   decay  0.5  → multiplier at the scale distance
+    //   weight 3    → maximum geo contribution
+    const finalQuery = hasGeo
+      ? {
+          function_score: {
+            query: baseBoolQuery,
+            functions: [
+              {
+                // Only apply decay to events that have a geo_point stored
+                filter: { exists: { field: 'location' } },
+                gauss: {
+                  location: {
+                    origin: { lat: Number(userLat), lon: Number(userLng) },
+                    scale:  '30km',
+                    offset: '5km',
+                    decay:   0.5,
+                  },
+                },
+                weight: 3,
+              },
+            ],
+            boost_mode: 'sum',  // geo score is ADDED to category score (not replacing it)
+            score_mode: 'sum',
+          },
+        }
+      : baseBoolQuery;
+
     // ── Step 3: execute recommendations query ────────────────────────────────
     const recResult = await es.search({
       index: EVENTS_INDEX,
       body: {
-        query: {
-          bool: {
-            should:   shouldClauses,
-            minimum_should_match: 1,
-            must_not: interactedIds.length
-              ? [{ ids: { values: interactedIds } }]
-              : [],
-            filter: [
-              { range: { datetime: { gte: 'now' } } }, // future events only
-            ],
-          },
-        },
+        query: finalQuery,
         sort: [
-          '_score',                // most relevant category first
-          { datetime: 'asc' },    // then soonest
+          '_score',              // combined category + geo score first
+          { datetime: 'asc' },  // then soonest as tiebreaker
         ],
         size: limit,
       },
     });
 
-    const hits = recResult.hits.hits.map((h) => ({
-      _id:   h._id,
-      score: h._score,
-      ...h._source,
-    }));
+    const hits = recResult.hits.hits.map((h) => {
+      const source = h._source;
+      // Compute distanceKm client-side using haversine (avoids a separate geo sort)
+      const distanceKm =
+        hasGeo && source.location?.lat && source.location?.lon
+          ? Number(haversineKm(Number(userLat), Number(userLng), source.location.lat, source.location.lon).toFixed(1))
+          : null;
+      return {
+        _id:   h._id,
+        score: h._score,
+        ...source,
+        ...(distanceKm != null && { distanceKm }),
+      };
+    });
 
     const total =
       typeof recResult.hits.total === 'number'
