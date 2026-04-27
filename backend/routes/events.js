@@ -18,6 +18,8 @@ import {
   getWhatsappGroupPayload,
   joinEvent,
   listEvents,
+  listEventsByVenue,
+  listEventCities,
   reindexEvents,
   submitEventRating,
   toggleFavorite,
@@ -34,6 +36,8 @@ const router = Router();
 // optionalAuth — populates req.user when token present (needed for myEvents filter)
 router.get('/', optionalAuth, asyncHandler(listEvents));
 // ⚠️  Must be registered BEFORE /:eventId so static segments aren't treated as ids
+router.get('/by-venue', asyncHandler(listEventsByVenue));
+router.get('/cities', asyncHandler(listEventCities));
 router.get('/recommendations', requireAuth, asyncHandler(getRecommendedEvents));
 router.get('/me/favorites', requireAuth, asyncHandler(listMyFavoriteEvents));
 router.get('/me/bookings', requireAuth, asyncHandler(listMyBookedEvents));

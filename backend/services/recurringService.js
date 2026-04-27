@@ -60,12 +60,27 @@ export async function spawnNextOccurrence(event) {
   const newDatetime = nextDatetime(event.datetime, rec.frequency);
   const parentId    = rec.parentEventId || event._id; // occurrence #0 is its own parent ref
 
+  // ── Resolve venue: per-occurrence override on the parent wins, else inherit ──
+  let addressForNext = event.address;
+  try {
+    const parentDoc = rec.parentEventId
+      ? await Event.findById(rec.parentEventId).select('recurrence').lean()
+      : { recurrence: rec };
+    const overrides = parentDoc?.recurrence?.overrides || [];
+    const match = overrides.find((o) => Number(o.occurrenceIndex) === nextIndex);
+    if (match?.addressId) {
+      addressForNext = match.addressId;
+    }
+  } catch (e) {
+    console.warn('[recurring] override lookup failed:', e.message);
+  }
+
   // ── Clone the event ────────────────────────────────────────────────────────
   const nextEvent = await Event.create({
     photo:        event.photo,
     name:         event.name,
     description:  event.description,
-    address:      event.address,      // reuse same address document
+    address:      addressForNext,
     datetime:     newDatetime,
     category:     event.category,
     activities:   event.activities,

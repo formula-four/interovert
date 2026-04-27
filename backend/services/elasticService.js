@@ -148,6 +148,7 @@ export async function bulkIndexEvents(docs) {
 export async function searchEvents({
   q,
   category,
+  city,
   dateFrom,
   dateTo,
   sortBy,
@@ -178,6 +179,10 @@ export async function searchEvents({
 
   if (category && category !== 'all') {
     filter.push({ term: { category: category.toLowerCase() } });
+  }
+
+  if (city && String(city).trim()) {
+    filter.push({ term: { city: String(city).toLowerCase().trim() } });
   }
 
   if (ownerId && joinedEventIds !== undefined) {

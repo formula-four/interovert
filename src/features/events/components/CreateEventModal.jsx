@@ -20,6 +20,9 @@ import { toast } from 'react-hot-toast';
 import apiClient from '../../../services/apiClient';
 import { getAuthToken } from '../../../utils/session';
 import AddressAutocomplete from '../../../components/AddressAutocomplete';
+import AddressValidator from './AddressValidator';
+import SimilarEventsAtVenue from './SimilarEventsAtVenue';
+import RecurrenceOverridesEditor from './RecurrenceOverridesEditor';
 
 const EMPTY_ADDRESS = {
   addressLabel: '',
@@ -89,12 +92,15 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
   const [recurrenceEnabled, setRecurrenceEnabled]   = useState(false);
   const [recurrenceFrequency, setRecurrenceFrequency] = useState('weekly');
   const [recurrenceEndAfter, setRecurrenceEndAfter]   = useState('');
+  const [recurrenceOverrides, setRecurrenceOverrides] = useState([]);
 
   const [addressMode, setAddressMode] = useState('new');
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Validated geocode for new-address mode (set once user clicks "Validate address")
+  const [validatedGeocode, setValidatedGeocode] = useState(null);
 
   const datetimeLocalMin = useMemo(() => toDatetimeLocalValue(new Date()), [isOpen]);
 
@@ -118,8 +124,11 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
       });
   }, [isOpen]);
 
-  const setAddr = (field) => (e) =>
+  const setAddr = (field) => (e) => {
     setNewAddress((prev) => ({ ...prev, [field]: e.target.value }));
+    // Any manual edit invalidates the prior geocode pick
+    setValidatedGeocode(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -137,7 +146,14 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
         toast.error('Street address and city are required');
         return;
       }
-      addressPayload = { ...newAddress };
+      if (!validatedGeocode) {
+        toast.error('Please validate the address before publishing.');
+        return;
+      }
+      addressPayload = {
+        ...newAddress,
+        geocodeOverride: { lat: validatedGeocode.lat, lng: validatedGeocode.lng },
+      };
     }
 
     const start = eventData.datetime ? new Date(eventData.datetime) : null;
@@ -158,6 +174,19 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
 
     setIsSubmitting(true);
     try {
+      const overridesPayload =
+        recurrenceEnabled && recurrenceOverrides.length > 0
+          ? recurrenceOverrides
+              .filter((o) => o.address?.addressLine1 && o.address?.addressCity && o.geocode)
+              .map((o) => ({
+                occurrenceIndex: o.occurrenceIndex,
+                address: {
+                  ...o.address,
+                  geocodeOverride: { lat: o.geocode.lat, lng: o.geocode.lng },
+                },
+              }))
+          : [];
+
       await apiClient.post('/api/events', {
         ...eventData,
         ...addressPayload,
@@ -166,6 +195,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
         recurrenceEnabled,
         recurrenceFrequency,
         recurrenceEndAfter: recurrenceEndAfter ? Number(recurrenceEndAfter) : null,
+        recurrenceOverrides: overridesPayload,
       });
       toast.success('Event created successfully');
       onCreated();
@@ -418,7 +448,7 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                           <label className={labelBase}>Search &amp; autofill</label>
                           <AddressAutocomplete
                             placeholder="Type a venue or address…"
-                            onSelect={(fields) =>
+                            onSelect={(fields) => {
                               setNewAddress((prev) => ({
                                 ...prev,
                                 addressLine1: fields.line1 || prev.addressLine1,
@@ -426,8 +456,9 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                                 addressState: fields.state || prev.addressState,
                                 addressCountry: fields.country || prev.addressCountry,
                                 addressPostalCode: fields.postalCode || prev.addressPostalCode,
-                              }))
-                            }
+                              }));
+                              setValidatedGeocode(null);
+                            }}
                             inputClassName="border-zinc-600/90 bg-zinc-900/80 text-zinc-100 placeholder-zinc-500 focus:border-violet-500/70"
                           />
                           <p className="mt-1.5 text-xs text-zinc-500">
@@ -534,8 +565,40 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                           <MapPin size={12} className="shrink-0 text-violet-400/70" />
                           Coordinates are detected automatically from this address.
                         </p>
+
+                        <AddressValidator
+                          addressFields={{
+                            line1: newAddress.addressLine1,
+                            line2: newAddress.addressLine2,
+                            city: newAddress.addressCity,
+                            state: newAddress.addressState,
+                            postalCode: newAddress.addressPostalCode,
+                            country: newAddress.addressCountry,
+                          }}
+                          onResolved={(g) => setValidatedGeocode(g)}
+                          onCleared={() => setValidatedGeocode(null)}
+                        />
+
+                        {validatedGeocode && (
+                          <SimilarEventsAtVenue
+                            lat={validatedGeocode.lat}
+                            lng={validatedGeocode.lng}
+                          />
+                        )}
                       </div>
                     )}
+
+                    {addressMode === 'saved' && selectedAddressId && (() => {
+                      const sel = savedAddresses.find((a) => a._id === selectedAddressId);
+                      return sel?.geocode?.lat ? (
+                        <div className="mt-3">
+                          <SimilarEventsAtVenue
+                            lat={sel.geocode.lat}
+                            lng={sel.geocode.lng}
+                          />
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Schedule & category */}
@@ -696,6 +759,16 @@ export default function CreateEventModal({ isOpen, onClose, onCreated, categorie
                           </div>
                         </div>
                       </div>
+                    )}
+
+                    {recurrenceEnabled && recurrenceEndAfter && (
+                      <RecurrenceOverridesEditor
+                        startDatetime={eventData.datetime}
+                        frequency={recurrenceFrequency}
+                        totalOccurrences={Number(recurrenceEndAfter)}
+                        overrides={recurrenceOverrides}
+                        setOverrides={setRecurrenceOverrides}
+                      />
                     )}
                   </FormSection>
 

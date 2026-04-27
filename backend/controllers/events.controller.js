@@ -76,7 +76,7 @@ async function getEventStats(eventId) {
 }
 
 export async function listEvents(req, res) {
-  const { q, category, dateFrom, dateTo, sortBy, userLat, userLng, radius, myEvents } = req.query;
+  const { q, category, city, dateFrom, dateTo, sortBy, userLat, userLng, radius, myEvents } = req.query;
   const { page, limit, skip } = parseEventsListPagination(req);
 
   if (myEvents === 'true' && !req.user?._id) {
@@ -99,6 +99,7 @@ export async function listEvents(req, res) {
     const esResult = await esSearch({
       q,
       category,
+      city,
       dateFrom,
       dateTo,
       sortBy,
@@ -149,6 +150,22 @@ export async function listEvents(req, res) {
   const filter = {};
   if (myEvents === 'true' && req.user?._id) {
     filter.$or = [{ owner_id: req.user._id }, { _id: { $in: joinedEventIdsRaw } }];
+  }
+  if (category && category !== 'all') {
+    filter.category = category;
+  }
+  if (q && String(q).trim()) {
+    const re = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$and = [
+      ...(filter.$and || []),
+      { $or: [{ name: re }, { description: re }, { activities: re }] },
+    ];
+  }
+  if (city && String(city).trim()) {
+    const cityAddresses = await Address.find({
+      city: new RegExp(`^${String(city).trim()}$`, 'i'),
+    }).select('_id').lean();
+    filter.address = { $in: cityAddresses.map((a) => a._id) };
   }
   const total = await Event.countDocuments(filter);
   const events = await Event.find(filter)
@@ -321,7 +338,23 @@ export async function createEvent(req, res) {
       postalCode: addressPostalCode,
       country: addressCountry,
     });
-    const geocode = await geocodeAddress(formatted);
+    // Prefer the explicit override picked from the validation UI; only geocode otherwise
+    const override = payload.geocodeOverride;
+    const hasOverride =
+      override &&
+      Number.isFinite(Number(override.lat)) &&
+      Number.isFinite(Number(override.lng));
+    const geocode = hasOverride
+      ? { lat: Number(override.lat), lng: Number(override.lng) }
+      : await geocodeAddress(formatted);
+
+    if (!geocode && payload.allowMissingGeocode !== true) {
+      return res.status(400).json({
+        message:
+          'Could not validate this address. Please refine it or pick a suggestion before publishing.',
+        code: 'ADDRESS_NOT_FOUND',
+      });
+    }
 
     const addressDoc = await Address.create({
       owner_id: req.user._id,
@@ -343,6 +376,49 @@ export async function createEvent(req, res) {
 
   // ── Recurrence ─────────────────────────────────────────────────────────────
   const recurringEnabled = payload.recurrenceEnabled === true || payload.recurrenceEnabled === 'true';
+
+  // Build per-occurrence venue overrides if provided.
+  // Each entry: { occurrenceIndex: N, address: { line1,city,...,geocodeOverride? } }
+  const overrideEntries = [];
+  if (recurringEnabled && Array.isArray(payload.recurrenceOverrides)) {
+    for (const ov of payload.recurrenceOverrides) {
+      const idx = Number(ov?.occurrenceIndex);
+      const addr = ov?.address;
+      if (!Number.isFinite(idx) || idx <= 0) continue;
+      if (!addr || !addr.addressLine1 || !addr.addressCity) continue;
+      const formatted = buildFormattedAddress({
+        line1: addr.addressLine1,
+        line2: addr.addressLine2,
+        city: addr.addressCity,
+        state: addr.addressState,
+        postalCode: addr.addressPostalCode,
+        country: addr.addressCountry,
+      });
+      const ovOverride = addr.geocodeOverride;
+      const hasOv =
+        ovOverride &&
+        Number.isFinite(Number(ovOverride.lat)) &&
+        Number.isFinite(Number(ovOverride.lng));
+      const ovGeocode = hasOv
+        ? { lat: Number(ovOverride.lat), lng: Number(ovOverride.lng) }
+        : await geocodeAddress(formatted);
+      const ovDoc = await Address.create({
+        owner_id: req.user._id,
+        type: 'event',
+        label: (addr.addressLabel || 'Event Venue').trim(),
+        line1: addr.addressLine1.trim(),
+        line2: (addr.addressLine2 || '').trim(),
+        city: addr.addressCity.trim(),
+        state: (addr.addressState || '').trim(),
+        country: (addr.addressCountry || '').trim(),
+        postalCode: (addr.addressPostalCode || '').trim(),
+        formattedAddress: formatted,
+        geocode: ovGeocode,
+      });
+      overrideEntries.push({ occurrenceIndex: idx, addressId: ovDoc._id });
+    }
+  }
+
   const recurrence = recurringEnabled
     ? {
         enabled:             true,
@@ -356,6 +432,7 @@ export async function createEvent(req, res) {
                                ? Number(payload.recurrenceEndAfter)
                                : null,
         spawnedNext:         false,
+        overrides:           overrideEntries,
       }
     : { enabled: false };
 
@@ -408,9 +485,47 @@ export async function updateEvent(req, res) {
         postalCode: ((body.addressPostalCode ?? addressDoc.postalCode) || '').trim(),
       };
       updated.formattedAddress = buildFormattedAddress(updated);
-      updated.geocode = await geocodeAddress(updated.formattedAddress);
-      Object.assign(addressDoc, updated);
-      await addressDoc.save();
+      const override = body.geocodeOverride;
+      const hasOverride =
+        override &&
+        Number.isFinite(Number(override.lat)) &&
+        Number.isFinite(Number(override.lng));
+      updated.geocode = hasOverride
+        ? { lat: Number(override.lat), lng: Number(override.lng) }
+        : await geocodeAddress(updated.formattedAddress);
+
+      // If this event is part of a recurring series AND the address is shared
+      // with siblings/parent, fork — create a new Address so we don't change
+      // the venue for the whole series.
+      const seriesId = event.recurrence?.seriesId;
+      let mustFork = false;
+      if (seriesId) {
+        const sharedCount = await Event.countDocuments({
+          address: addressDoc._id,
+          _id: { $ne: event._id },
+        });
+        if (sharedCount > 0) mustFork = true;
+      }
+
+      if (mustFork) {
+        const newAddr = await Address.create({
+          owner_id: req.user._id,
+          type: 'event',
+          label: updated.label || 'Event Venue',
+          line1: updated.line1,
+          line2: updated.line2,
+          city: updated.city,
+          state: updated.state,
+          country: updated.country,
+          postalCode: updated.postalCode,
+          formattedAddress: updated.formattedAddress,
+          geocode: updated.geocode,
+        });
+        event.address = newAddr._id;
+      } else {
+        Object.assign(addressDoc, updated);
+        await addressDoc.save();
+      }
     }
   }
 
@@ -1013,6 +1128,114 @@ export async function getRecommendedEvents(req, res) {
     events:      enriched,
     total:       result.total,
     topCategory: result.topCategory,
+  });
+}
+
+/**
+ * GET /api/events/by-venue
+ * Query: lat, lng, radiusMeters (default 75), excludeEventId, limit (default 10)
+ * Returns upcoming events near the given point.
+ *
+ * Falls back to MongoDB-only address-doc dedupe if Elasticsearch isn't configured.
+ */
+export async function listEventsByVenue(req, res) {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const radiusMeters = Math.max(10, Math.min(1000, Number(req.query.radiusMeters) || 75));
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+  const excludeEventId = (req.query.excludeEventId || '').toString().trim();
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ message: 'lat and lng are required' });
+  }
+
+  if (isElasticConfigured()) {
+    const radiusKm = radiusMeters / 1000;
+    const esResult = await esSearch({
+      userLat: lat,
+      userLng: lng,
+      radius: radiusKm,
+      dateFrom: new Date().toISOString(),
+      page: 1,
+      limit,
+    });
+    if (esResult) {
+      const filtered = excludeEventId
+        ? esResult.hits.filter((h) => String(h._id) !== excludeEventId)
+        : esResult.hits;
+      const eventIds = filtered.map((h) => h._id);
+      const mongoEvents = await Event.find({ _id: { $in: eventIds } })
+        .populate('address')
+        .lean();
+      const mongoMap = new Map(mongoEvents.map((e) => [String(e._id), e]));
+      const enriched = filtered.map((hit) => {
+        const mongo = mongoMap.get(String(hit._id)) || {};
+        return {
+          ...mongo,
+          ...hit,
+          photo: mongo.photo || hit.photo,
+          address: mongo.address || undefined,
+          eventCreatorLabel: hit.ownerName,
+        };
+      });
+      return res.json({ events: enriched, total: enriched.length });
+    }
+  }
+
+  // MongoDB fallback: find Address docs whose lat/lng are within a tight bounding box
+  const degDelta = radiusMeters / 111000; // ≈ 1 deg latitude
+  const addresses = await Address.find({
+    'geocode.lat': { $gte: lat - degDelta, $lte: lat + degDelta },
+    'geocode.lng': { $gte: lng - degDelta, $lte: lng + degDelta },
+  }).select('_id').lean();
+  const addressIds = addresses.map((a) => a._id);
+  const filter = {
+    address: { $in: addressIds },
+    datetime: { $gte: new Date() },
+  };
+  if (excludeEventId) filter._id = { $ne: excludeEventId };
+  const events = await Event.find(filter)
+    .populate('address')
+    .sort({ datetime: 1 })
+    .limit(limit)
+    .lean();
+  return res.json({ events, total: events.length });
+}
+
+/**
+ * GET /api/events/cities
+ * Returns top distinct cities for upcoming events with their event counts.
+ */
+export async function listEventCities(req, res) {
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
+  const now = new Date();
+
+  // Aggregate via Mongo for accuracy (ES "city" field is lowercased; we want display case)
+  const rows = await Event.aggregate([
+    { $match: { datetime: { $gte: now } } },
+    {
+      $lookup: {
+        from: 'addresses',
+        localField: 'address',
+        foreignField: '_id',
+        as: 'addr',
+      },
+    },
+    { $unwind: '$addr' },
+    { $match: { 'addr.city': { $ne: '' } } },
+    {
+      $group: {
+        _id: { $toLower: '$addr.city' },
+        city: { $first: '$addr.city' },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { count: -1, city: 1 } },
+    { $limit: limit },
+  ]);
+
+  return res.json({
+    cities: rows.map((r) => ({ city: r.city, count: r.count })),
   });
 }
 

@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import env, { validateStartupEnv } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import eventRoutes from './routes/events.js';
+import geoRoutes from './routes/geo.js';
 import addressRoutes from './routes/addresses.js';
 import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
@@ -127,6 +128,7 @@ app.get('/api/test', (req, res) => {
 
 app.use('/api', authRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/geo', geoRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);

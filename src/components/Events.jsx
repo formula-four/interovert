@@ -35,16 +35,51 @@ export default function Events() {
   const [nearMe, setNearMe] = useState(false)
   const [radius, setRadius] = useState(25)
   const [userAddress, setUserAddress] = useState(null)   // first saved address with geocode
+  const [customOrigin, setCustomOrigin] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem('interovert.nearMe.origin')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
+
+  // City filter
+  const [selectedCity, setSelectedCity] = useState(null)
 
   // My Events filter
   const [myEvents, setMyEvents] = useState(false)
   const currentUser = getCurrentUser()
 
+  useEffect(() => {
+    try {
+      if (customOrigin) {
+        window.localStorage.setItem('interovert.nearMe.origin', JSON.stringify(customOrigin))
+      } else {
+        window.localStorage.removeItem('interovert.nearMe.origin')
+      }
+    } catch {
+      // ignore
+    }
+  }, [customOrigin])
+
   const debounceRef = useRef(null)
 
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, selectedCategory, sortBy, nearMe, radius, myEvents, userAddress?.geocode?.lat, userAddress?.geocode?.lng])
+  }, [
+    searchTerm,
+    selectedCategory,
+    sortBy,
+    nearMe,
+    radius,
+    myEvents,
+    selectedCity,
+    userAddress?.geocode?.lat,
+    userAddress?.geocode?.lng,
+    customOrigin?.lat,
+    customOrigin?.lng,
+  ])
 
   // Fetch the user's saved addresses once on mount to get their geo coords
   useEffect(() => {
@@ -66,6 +101,7 @@ export default function Events() {
       if (params.dateTo) query.set('dateTo', params.dateTo)
       if (params.sortBy) query.set('sortBy', params.sortBy)
       if (params.myEvents) query.set('myEvents', 'true')
+      if (params.city) query.set('city', params.city)
 
       // Geo params — only when Near Me is active and we have coords
       if (params.userLat != null && params.userLng != null) {
@@ -94,20 +130,26 @@ export default function Events() {
   const debouncedLoad = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
+      const origin = customOrigin?.lat
+        ? customOrigin
+        : userAddress?.geocode
+          ? { lat: userAddress.geocode.lat, lng: userAddress.geocode.lng }
+          : null
       loadEvents({
         q: searchTerm,
         category: selectedCategory,
         sortBy,
         myEvents,
+        city: selectedCity || undefined,
         page: pageRef.current,
-        ...(nearMe && userAddress?.geocode && {
-          userLat: userAddress.geocode.lat,
-          userLng: userAddress.geocode.lng,
+        ...(nearMe && origin && {
+          userLat: origin.lat,
+          userLng: origin.lng,
           radius,
         }),
       })
     }, 350)
-  }, [searchTerm, selectedCategory, sortBy, nearMe, radius, userAddress, myEvents, loadEvents])
+  }, [searchTerm, selectedCategory, sortBy, nearMe, radius, userAddress, customOrigin, myEvents, selectedCity, loadEvents])
 
   useEffect(() => {
     debouncedLoad()
@@ -194,6 +236,10 @@ export default function Events() {
           radius={radius}
           setRadius={setRadius}
           userAddress={userAddress}
+          customOrigin={customOrigin}
+          setCustomOrigin={setCustomOrigin}
+          selectedCity={selectedCity}
+          setSelectedCity={setSelectedCity}
           myEvents={myEvents}
           setMyEvents={setMyEvents}
           currentUser={currentUser}
@@ -266,15 +312,21 @@ export default function Events() {
         onClose={() => setIsModalOpen(false)}
         onCreated={() => {
           setPage(1)
+          const origin = customOrigin?.lat
+            ? customOrigin
+            : userAddress?.geocode
+              ? { lat: userAddress.geocode.lat, lng: userAddress.geocode.lng }
+              : null
           loadEvents({
             q: searchTerm,
             category: selectedCategory,
             sortBy,
             myEvents,
+            city: selectedCity || undefined,
             page: 1,
-            ...(nearMe && userAddress?.geocode && {
-              userLat: userAddress.geocode.lat,
-              userLng: userAddress.geocode.lng,
+            ...(nearMe && origin && {
+              userLat: origin.lat,
+              userLng: origin.lng,
               radius,
             }),
           })

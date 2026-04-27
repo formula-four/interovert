@@ -1,5 +1,13 @@
 import mongoose from 'mongoose';
 
+const recurrenceOverrideSchema = new mongoose.Schema(
+  {
+    occurrenceIndex: { type: Number, required: true },
+    addressId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Address', required: true },
+  },
+  { _id: false }
+);
+
 const recurrenceSchema = new mongoose.Schema(
   {
     enabled:              { type: Boolean,  default: false },
@@ -14,6 +22,9 @@ const recurrenceSchema = new mongoose.Schema(
     endAfterOccurrences:  { type: Number,   default: null },
     // Guards against double-spawning when the cron runs multiple times
     spawnedNext:          { type: Boolean,  default: false },
+    // Per-occurrence venue overrides — only meaningful on occurrence #0 (the parent).
+    // When the cron spawns occurrence N, it consults the parent's overrides[N].
+    overrides:            { type: [recurrenceOverrideSchema], default: [] },
   },
   { _id: false }
 );
